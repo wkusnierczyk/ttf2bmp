@@ -29,12 +29,29 @@ build:
 	$(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME) $(CMD_PATH)
 	@echo "  >  Done! Binary located at $(OUTPUT_DIR)/$(BINARY_NAME)"
 
-# Run unit tests and benchmarks
+# Run unit tests
 test:
 	@echo "  >  Running tests..."
-	$(GOTEST) -v ./...
+	$(GOTEST) -v .
+
+# Run benchamrks
+bench:
 	@echo "  >  Running benchmarks..."
-	$(GOTEST) -bench=. ./...
+	$(GOTEST) -bench=. .
+
+# Formats code and checks for common errors
+check:
+	@echo "  >  Formatting code..."
+	$(GOCMD) fmt . ./cmd/ttf2bmp
+	@echo "  >  Vetting code..."
+	$(GOCMD) vet .  ./cmd/ttf2bmp
+
+# Run linter
+lint:
+	@echo "Running Linter..."
+	# Checks code style, logic errors, and complexity
+	# Requires: https://golangci-lint.run/usage/install/
+	golangci-lint run
 
 # Run the tool (example usage)
 run: build
@@ -47,6 +64,18 @@ clean:
 	$(GOCLEAN)
 	rm -rf $(OUTPUT_DIR)
 	rm -f *.png *.fnt
+
+help:
+	@echo "Make options:"
+	@echo "  make          - Run tests and build local binary"
+	@echo "  make deps     - Download dependencies (go mod tidy)"
+	@echo "  make build    - Build binary to ./bin"
+	@echo "  make test     - Run unit tests and benchmarks"
+	@echo "  make clean    - Remove binary and output files"
+	@echo "  make build-linux   - Cross-compile for Linux"
+	@echo "  make build-mac - Cross-compile for MacOS"
+	@echo "  make build-windows - Cross-compile for Windows"
+
 
 # --- Cross Compilation Targets ---
 
@@ -67,19 +96,3 @@ build-mac:
 	@echo "  >  Building for MacOS (M1/M2)..."
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_PATH)
 
-help:
-	@echo "Make options:"
-	@echo "  make          - Run tests and build local binary"
-	@echo "  make deps     - Download dependencies (go mod tidy)"
-	@echo "  make build    - Build binary to ./bin"
-	@echo "  make test     - Run unit tests and benchmarks"
-	@echo "  make clean    - Remove binary and output files"
-	@echo "  make build-windows - Cross-compile for Windows"
-	@echo "  make build-linux   - Cross-compile for Linux"
-
-# Formats code and checks for common errors
-check:
-	@echo "  >  Formatting code..."
-	$(GOCMD) fmt ./...
-	@echo "  >  Vetting code..."
-	$(GOCMD) vet ./...
