@@ -80,14 +80,18 @@ func TestFileExport(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to save PNG: %v", err)
 	}
-	defer os.Remove("test_output.png")
+	defer func() {
+		_ = os.Remove("test_output.png")
+	}()
 
 	// Test FNT Export
 	err = bf.SaveFNT("test_output.fnt", "test_output.png")
 	if err != nil {
 		t.Errorf("Failed to save FNT: %v", err)
 	}
-	defer os.Remove("test_output.fnt")
+	defer func() {
+		_ = os.Remove("test_output.fnt")
+	}()
 }
 
 // Benchmark the generation process

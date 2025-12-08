@@ -62,7 +62,9 @@ func Generate(config Config) (*BitmapFont, error) {
 		DPI:  config.DPI,
 	}
 	face := truetype.NewFace(parsedFont, &options)
-	defer face.Close()
+	defer func() {
+		_ = face.Close()
+	}()
 
 	// 1. Prepare the Destination Image IMMEDIATELY
 	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetWidth, config.SheetHeight))
@@ -161,7 +163,9 @@ func (bf *BitmapFont) SavePNG(filename string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	return png.Encode(f, bf.Image)
 }
 
@@ -171,18 +175,20 @@ func (bf *BitmapFont) SaveFNT(filename, imgFilename string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	w := bufio.NewWriter(f)
 
-	fmt.Fprintf(w, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=1 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1\n", bf.FaceName, bf.FontSize)
+	_, _ = fmt.Fprintf(w, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=1 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1\n", bf.FaceName, bf.FontSize)
 	width := bf.Image.Bounds().Max.X
 	height := bf.Image.Bounds().Max.Y
-	fmt.Fprintf(w, "common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0\n", bf.LineHeight, bf.Base, width, height)
-	fmt.Fprintf(w, "page id=0 file=\"%s\"\n", imgFilename)
-	fmt.Fprintf(w, "chars count=%d\n", len(bf.Chars))
+	_, _ = fmt.Fprintf(w, "common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0\n", bf.LineHeight, bf.Base, width, height)
+	_, _ = fmt.Fprintf(w, "page id=0 file=\"%s\"\n", imgFilename)
+	_, _ = fmt.Fprintf(w, "chars count=%d\n", len(bf.Chars))
 
 	for _, c := range bf.Chars {
-		fmt.Fprintf(w, "char id=%-4d x=%-4d y=%-4d width=%-4d height=%-4d xoffset=%-4d yoffset=%-4d xadvance=%-4d page=0 chnl=15\n",
+		_, _ = fmt.Fprintf(w, "char id=%-4d x=%-4d y=%-4d width=%-4d height=%-4d xoffset=%-4d yoffset=%-4d xadvance=%-4d page=0 chnl=15\n",
 			c.ID, c.X, c.Y, c.Width, c.Height, c.XOffset, c.YOffset, c.XAdvance)
 	}
 
