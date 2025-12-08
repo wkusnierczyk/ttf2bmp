@@ -6,8 +6,6 @@ import (
 	"image"
 	"image/draw"
 	"image/png"
-
-	"io/ioutil"
 	"os"
 
 	"github.com/golang/freetype"
@@ -66,117 +64,81 @@ func Generate(config Config) (*BitmapFont, error) {
 	face := truetype.NewFace(parsedFont, &options)
 	defer face.Close()
 
-	// 1. Measure all glyphs
-	type renderGlyph struct {
-		r         rune
-		imageMask image.Image // Changed to image.Image interface
-		pointMask image.Point // Added imageMask point (offset)
-		bounds    image.Rectangle
-		advance   fixed.Int26_6
-	}
-
-	var glyphs []renderGlyph
-	maxHeight := 0
-
-	for _, r := range config.Runes {
-		bounds, imageMask, pointMask, advance, ok := face.Glyph(fixed.P(0, 0), r)
-
-		if !ok {
-			continue
-		}
-
-		// Calculate vertical metrics
-		boundsHeight := bounds.Max.Y - bounds.Min.Y
-		if boundsHeight > maxHeight {
-			maxHeight = boundsHeight
-		}
-
-		glyphs = append(glyphs, renderGlyph{
-			r:         r,
-			imageMask: imageMask,
-			pointMask: pointMask,
-			bounds:    bounds,
-			advance:   advance,
-		})
-
-		// debug
-		fmt.Printf("[%#U] read with X: %d-%d, Y: %d-%d\n", r, bounds.Min.X, bounds.Max.X, bounds.Min.Y, bounds.Max.Y)
-
-	}
-
-	// 2. Pack Glyphs (Simple Shelf Packing)
+	// 1. Prepare the Destination Image IMMEDIATELY
 	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetWidth, config.SheetHeight))
 	charMap := make(map[rune]CharData)
 
-	// Start drawing at (1,1); update as glyphs are placed
+	// Cursor state
 	currentX, currentY := 1, 1
-
-	// Initial row height; update as glyphs are placed, reset when wrapping to new row
 	rowHeight := 0
 
-	// Font face metrics
+	// Font metrics
 	metrics := face.Metrics()
 	lineHeight := (metrics.Height).Ceil()
 	baseLine := (metrics.Ascent).Ceil()
 
-	for _, glyph := range glyphs {
+	// 2. Single Pass: Render -> Pack -> Draw -> Forget
+	for _, r := range config.Runes {
+		// Render the individual glyph
+		bounds, imageMask, pointMask, advance, ok := face.Glyph(fixed.P(0, 0), r)
+		if !ok {
+			fmt.Printf("Skipping rune [%c] - not found\n", r)
+			continue
+		}
 
-		// Glyph coordinates and dimensions
-		maxX := glyph.bounds.Max.X
-		minX := glyph.bounds.Min.X
-		maxY := glyph.bounds.Max.Y
-		minY := glyph.bounds.Min.Y
+		// Calculate dimensions
+		maxX := bounds.Max.X
+		maxY := bounds.Max.Y
+		minX := bounds.Min.X
+		minY := bounds.Min.Y
 		width := maxX - minX
 		height := maxY - minY
 
-		// debug
-		fmt.Printf("[%#U] X(%d to %d = %d), Y(%d to %d = %d)\n", glyph.r, minX, maxX, width, minY, maxY, height)
-
-		// Check for space in the current row, if insufficient, wrap to a new row
+		// 3. Smart Wrapping Logic
+		// Check if we fit in the current row
 		if currentX+width >= config.SheetWidth {
 			currentX = 1
-			currentY += rowHeight + config.Padding
+			// Move Y down by the tallest item in the previous row
+			if rowHeight == 0 {
+				currentY += lineHeight + config.Padding
+			} else {
+				currentY += rowHeight + config.Padding
+			}
 			rowHeight = 0
 		}
 
-		// Check for space in the current column, if insufficient, return error
+		// 4. Height Check
 		if currentY+height >= config.SheetHeight {
-			return nil, fmt.Errorf("atlas size (%dx%d) too small for font size %v", config.SheetWidth, config.SheetHeight, config.FontSize)
+			return nil, fmt.Errorf("atlas filled up! stopped at rune [%c]. Size (%dx%d) too small",
+				r, config.SheetWidth, config.SheetHeight)
 		}
 
-		// Create coordinates for the glyph in the atlas
-		minPoint := image.Point{currentX, currentY}
-		maxPoint := minPoint.Add(image.Point{width, height})
+		// 5. Draw IMMEDIATELY
+		dstRect := image.Rect(currentX, currentY, currentX+width, currentY+height)
 
-		// Create the destination rectangle on the atlas
-		destinationRectangle := image.Rectangle{Min: minPoint, Max: maxPoint}
-
-		// Draw using the imageMask and the imageMask point returned by face.Glyph
 		draw.DrawMask(
 			atlas,
-			destinationRectangle,
+			dstRect,
 			image.White,
 			image.Point{},
-			glyph.imageMask,
-			glyph.pointMask,
+			imageMask,
+			pointMask,
 			draw.Over,
 		)
 
-		// Store Metrics
-		charMap[glyph.r] = CharData{
-			ID: glyph.r,
-			//X:        currentX + config.Padding,
-			//Y:        currentY + config.Padding,
+		// 6. Store Metadata
+		charMap[r] = CharData{
+			ID:       r,
 			X:        currentX,
 			Y:        currentY,
 			Width:    width,
 			Height:   height,
-			XOffset:  glyph.bounds.Min.X,
-			YOffset:  glyph.bounds.Min.Y + baseLine,
-			XAdvance: glyph.advance.Ceil(),
+			XOffset:  bounds.Min.X,
+			YOffset:  bounds.Min.Y + baseLine,
+			XAdvance: advance.Ceil(),
 		}
 
-		// Advance cursor
+		// 7. Update Cursor
 		currentX += width + config.Padding
 		if height > rowHeight {
 			rowHeight = height
@@ -212,21 +174,13 @@ func (bf *BitmapFont) SaveFNT(filename, imgFilename string) error {
 	defer f.Close()
 	w := bufio.NewWriter(f)
 
-	// Write Info line
 	fmt.Fprintf(w, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=1 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1\n", bf.FaceName, bf.FontSize)
-
-	// Write Common line
 	width := bf.Image.Bounds().Max.X
 	height := bf.Image.Bounds().Max.Y
 	fmt.Fprintf(w, "common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0\n", bf.LineHeight, bf.Base, width, height)
-
-	// Write Page line
 	fmt.Fprintf(w, "page id=0 file=\"%s\"\n", imgFilename)
-
-	// Write Chars count
 	fmt.Fprintf(w, "chars count=%d\n", len(bf.Chars))
 
-	// Write individual characters
 	for _, c := range bf.Chars {
 		fmt.Fprintf(w, "char id=%-4d x=%-4d y=%-4d width=%-4d height=%-4d xoffset=%-4d yoffset=%-4d xadvance=%-4d page=0 chnl=15\n",
 			c.ID, c.X, c.Y, c.Width, c.Height, c.XOffset, c.YOffset, c.XAdvance)
@@ -237,5 +191,5 @@ func (bf *BitmapFont) SaveFNT(filename, imgFilename string) error {
 
 // Helper to load file bytes
 func LoadFontBytes(path string) ([]byte, error) {
-	return ioutil.ReadFile(path)
+	return os.ReadFile(path) // Updated from ioutil.ReadFile
 }
