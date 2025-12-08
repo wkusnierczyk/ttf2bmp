@@ -6,14 +6,12 @@ import (
 	"image"
 	"image/draw"
 	"image/png"
-	// "io"
+
 	"io/ioutil"
-	// "math"
 	"os"
 
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
-	// "golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -30,13 +28,13 @@ type CharData struct {
 
 // Config configures the generation process.
 type Config struct {
-	FontBytes []byte
-	FontSize  float64
-	DPI       float64
-	SheetW    int
-	SheetH    int
-	Runes     []rune
-	Padding   int
+	FontBytes   []byte
+	FontSize    float64
+	DPI         float64
+	SheetWidth  int
+	SheetHeight int
+	Runes       []rune
+	Padding     int
 }
 
 // BitmapFont represents the generated font data.
@@ -100,46 +98,64 @@ func Generate(config Config) (*BitmapFont, error) {
 			bounds:    bounds,
 			advance:   advance,
 		})
+
+		// debug
+		fmt.Printf("[%#U] read with X: %d-%d, Y: %d-%d\n", r, bounds.Min.X, bounds.Max.X, bounds.Min.Y, bounds.Max.Y)
+
 	}
 
 	// 2. Pack Glyphs (Simple Shelf Packing)
-	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetW, config.SheetH))
+	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetWidth, config.SheetHeight))
 	charMap := make(map[rune]CharData)
 
-	//currentX, currentY := 1, 1 // Padding
-	currentX, currentY := config.Padding, config.Padding // Padding
+	// Start drawing at (1,1); update as glyphs are placed
+	currentX, currentY := 1, 1
+
+	// Initial row height; update as glyphs are placed, reset when wrapping to new row
 	rowHeight := 0
 
+	// Font face metrics
 	metrics := face.Metrics()
 	lineHeight := (metrics.Height).Ceil()
 	baseLine := (metrics.Ascent).Ceil()
 
 	for _, glyph := range glyphs {
-		glyphWidth := glyph.bounds.Max.X - glyph.bounds.Min.X
-		glyphHeight := glyph.bounds.Max.Y - glyph.bounds.Min.Y
 
-		// Wrap to the next line if needed
-		if currentX+glyphWidth+config.Padding >= config.SheetW {
-			currentX = config.Padding
+		// Glyph coordinates and dimensions
+		maxX := glyph.bounds.Max.X
+		minX := glyph.bounds.Min.X
+		maxY := glyph.bounds.Max.Y
+		minY := glyph.bounds.Min.Y
+		width := maxX - minX
+		height := maxY - minY
+
+		// debug
+		fmt.Printf("[%#U] X(%d to %d = %d), Y(%d to %d = %d)\n", glyph.r, minX, maxX, width, minY, maxY, height)
+
+		// Check for space in the current row, if insufficient, wrap to a new row
+		if currentX+width >= config.SheetWidth {
+			currentX = 1
 			currentY += rowHeight + config.Padding
 			rowHeight = 0
 		}
 
-		if currentY+glyphHeight+config.Padding >= config.SheetH {
-			return nil, fmt.Errorf("atlas size (%dx%d) too small for font size %v", config.SheetW, config.SheetH, config.FontSize)
+		// Check for space in the current column, if insufficient, return error
+		if currentY+height >= config.SheetHeight {
+			return nil, fmt.Errorf("atlas size (%dx%d) too small for font size %v", config.SheetWidth, config.SheetHeight, config.FontSize)
 		}
 
-		// Draw glyph to atlas
-		drawPoint := image.Point{currentX, currentY}
+		// Create coordinates for the glyph in the atlas
+		minPoint := image.Point{currentX, currentY}
+		maxPoint := minPoint.Add(image.Point{width, height})
 
 		// Create the destination rectangle on the atlas
-		dstRect := image.Rectangle{Min: drawPoint, Max: drawPoint.Add(image.Point{glyphWidth, glyphHeight})}
+		destinationRectangle := image.Rectangle{Min: minPoint, Max: maxPoint}
 
 		// Draw using the imageMask and the imageMask point returned by face.Glyph
 		draw.DrawMask(
 			atlas,
-			dstRect,
-			image.Black, // TODO: fix the color
+			destinationRectangle,
+			image.White,
 			image.Point{},
 			glyph.imageMask,
 			glyph.pointMask,
@@ -148,20 +164,22 @@ func Generate(config Config) (*BitmapFont, error) {
 
 		// Store Metrics
 		charMap[glyph.r] = CharData{
-			ID:       glyph.r,
-			X:        currentX + config.Padding,
-			Y:        currentY + config.Padding,
-			Width:    glyphWidth,
-			Height:   glyphHeight,
+			ID: glyph.r,
+			//X:        currentX + config.Padding,
+			//Y:        currentY + config.Padding,
+			X:        currentX,
+			Y:        currentY,
+			Width:    width,
+			Height:   height,
 			XOffset:  glyph.bounds.Min.X,
 			YOffset:  glyph.bounds.Min.Y + baseLine,
 			XAdvance: glyph.advance.Ceil(),
 		}
 
 		// Advance cursor
-		currentX += glyphWidth + config.Padding
-		if glyphHeight > rowHeight {
-			rowHeight = glyphHeight
+		currentX += width + config.Padding
+		if height > rowHeight {
+			rowHeight = height
 		}
 	}
 

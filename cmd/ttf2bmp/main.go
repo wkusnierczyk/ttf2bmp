@@ -42,13 +42,13 @@ func main() {
 	}
 
 	config := ttf2bmp.Config{
-		FontBytes: fontBytes,
-		FontSize:  *size,
-		DPI:       *dpi,
-		SheetW:    *sheetSize,
-		SheetH:    *sheetSize,
-		Runes:     runeList,
-		Padding:   *padding,
+		FontBytes:   fontBytes,
+		FontSize:    *size,
+		DPI:         *dpi,
+		SheetWidth:  *sheetSize,
+		SheetHeight: *sheetSize,
+		Runes:       runeList,
+		Padding:     *padding,
 	}
 
 	fmt.Printf("Generating font from %s (Size: %.0f)...\n", *fontPath, *size)

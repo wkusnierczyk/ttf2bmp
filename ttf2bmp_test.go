@@ -12,12 +12,12 @@ func TestGenerate_Success(t *testing.T) {
 	fontData := goregular.TTF
 
 	cfg := Config{
-		FontBytes: fontData,
-		FontSize:  24,
-		DPI:       72,
-		SheetW:    512,
-		SheetH:    512,
-		Runes:     []rune{'A', 'B', 'C', '1', '2', '3'},
+		FontBytes:   fontData,
+		FontSize:    24,
+		DPI:         72,
+		SheetWidth:  512,
+		SheetHeight: 512,
+		Runes:       []rune{'A', 'B', 'C', '1', '2', '3'},
 	}
 
 	bf, err := Generate(cfg)
@@ -48,12 +48,12 @@ func TestGenerate_AtlasTooSmall(t *testing.T) {
 
 	// Try to fit 24px font into a 10x10 image (should fail)
 	cfg := Config{
-		FontBytes: fontData,
-		FontSize:  24,
-		DPI:       72,
-		SheetW:    10,
-		SheetH:    10,
-		Runes:     []rune{'A', 'B', 'C'},
+		FontBytes:   fontData,
+		FontSize:    24,
+		DPI:         72,
+		SheetWidth:  10,
+		SheetHeight: 10,
+		Runes:       []rune{'A', 'B', 'C'},
 	}
 
 	_, err := Generate(cfg)
@@ -65,12 +65,12 @@ func TestGenerate_AtlasTooSmall(t *testing.T) {
 func TestFileExport(t *testing.T) {
 	fontData := goregular.TTF
 	cfg := Config{
-		FontBytes: fontData,
-		FontSize:  16,
-		DPI:       72,
-		SheetW:    256,
-		SheetH:    256,
-		Runes:     []rune{'X'},
+		FontBytes:   fontData,
+		FontSize:    16,
+		DPI:         72,
+		SheetWidth:  256,
+		SheetHeight: 256,
+		Runes:       []rune{'X'},
 	}
 
 	bf, _ := Generate(cfg)
@@ -101,12 +101,12 @@ func BenchmarkGenerate(b *testing.B) {
 	}
 
 	cfg := Config{
-		FontBytes: fontData,
-		FontSize:  32,
-		DPI:       72,
-		SheetW:    1024,
-		SheetH:    1024,
-		Runes:     runes,
+		FontBytes:   fontData,
+		FontSize:    32,
+		DPI:         72,
+		SheetWidth:  1024,
+		SheetHeight: 1024,
+		Runes:       runes,
 	}
 
 	b.ResetTimer()
