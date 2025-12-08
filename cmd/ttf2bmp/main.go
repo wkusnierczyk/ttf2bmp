@@ -15,6 +15,7 @@ func main() {
 	dpi := flag.Float64("dpi", 72, "DPI (dots per inch)")
 	sheetSize := flag.Int("sheet", 512, "Width and Height of the texture atlas (square)")
 	chars := flag.String("chars", "", "Custom characters to include (default: ASCII 32-126)")
+	padding := flag.Int("padding", 2, "Padding pixels around each character")
 
 	flag.Parse()
 
@@ -47,6 +48,7 @@ func main() {
 		SheetW:    *sheetSize,
 		SheetH:    *sheetSize,
 		Runes:     runeList,
+		Padding:   *padding,
 	}
 
 	fmt.Printf("Generating font from %s (Size: %.0f)...\n", *fontPath, *size)

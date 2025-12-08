@@ -36,6 +36,7 @@ type Config struct {
 	SheetW    int
 	SheetH    int
 	Runes     []rune
+	Padding   int
 }
 
 // BitmapFont represents the generated font data.
@@ -137,18 +138,18 @@ func Generate(config Config) (*BitmapFont, error) {
 		draw.DrawMask(
 			atlas,
 			dstRect,
-			image.White,
+			image.Black, // TODO: fix the color
 			image.Point{},
 			glyph.imageMask,
-			glyph.pointMask.Add(glyph.bounds.Min), // Important: Offset by bounds.Min + pointMask
+			glyph.pointMask,
 			draw.Over,
 		)
 
 		// Store Metrics
 		charMap[glyph.r] = CharData{
 			ID:       glyph.r,
-			X:        currentX,
-			Y:        currentY,
+			X:        currentX + config.Padding,
+			Y:        currentY + config.Padding,
 			Width:    glyphWidth,
 			Height:   glyphHeight,
 			XOffset:  glyph.bounds.Min.X,
