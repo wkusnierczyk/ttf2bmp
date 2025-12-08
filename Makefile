@@ -13,7 +13,7 @@ GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 
 # .PHONY ensures these targets are treated as commands, not files
-.PHONY: all build clean test run deps build-linux build-windows build-mac help
+.PHONY: all build clean test run deps build-linux build-windows build-mac build-all help
 
 all: check test build
 
@@ -96,3 +96,4 @@ build-mac:
 	@echo "  >  Building for MacOS (M1/M2)..."
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_PATH)
 
+build-all: build-linux build-mac build-windows
