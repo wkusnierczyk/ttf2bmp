@@ -49,51 +49,39 @@ type BitmapFont struct {
 }
 
 // Generate creates a BitmapFont from the provided configuration.
-func Generate(cfg Config) (*BitmapFont, error) {
-	parsedFont, err := freetype.ParseFont(cfg.FontBytes)
+func Generate(config Config) (*BitmapFont, error) {
+	parsedFont, err := freetype.ParseFont(config.FontBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse font: %w", err)
 	}
 
-	// Create a context for rendering
-	c := freetype.NewContext()
-	c.SetDPI(cfg.DPI)
-	c.SetFont(parsedFont)
-	c.SetFontSize(cfg.FontSize)
+	context := freetype.NewContext()
+	context.SetDPI(config.DPI)
+	context.SetFont(parsedFont)
+	context.SetFontSize(config.FontSize)
 
-	// Calculate scale to convert FUnits to pixels
-	opts := truetype.Options{
-		Size: cfg.FontSize,
-		DPI:  cfg.DPI,
+	options := truetype.Options{
+		Size: config.FontSize,
+		DPI:  config.DPI,
 	}
-	face := truetype.NewFace(parsedFont, &opts)
+	face := truetype.NewFace(parsedFont, &options)
 	defer face.Close()
 
 	// 1. Measure all glyphs
 	type renderGlyph struct {
-		r       rune
-		mask    *image.Alpha
-		bounds  image.Rectangle
-		advance fixed.Int26_6
-		bearing fixed.Point26_6
+		r         rune
+		imageMask image.Image // Changed to image.Image interface
+		pointMask image.Point // Added imageMask point (offset)
+		bounds    image.Rectangle
+		advance   fixed.Int26_6
 	}
 
 	var glyphs []renderGlyph
 	maxHeight := 0
 
-	for _, r := range cfg.Runes {
-		// We use the face to get the glyph path and bounds
-		idx := parsedFont.Index(r)
+	for _, r := range config.Runes {
+		bounds, imageMask, pointMask, advance, ok := face.Glyph(fixed.P(0, 0), r)
 
-		// Create a temporary mask to measure exact pixel bounds
-		// Note: This is a simplified approach. For production, you might want to
-		// render directly to the atlas to save memory, but 2-pass is safer for packing.
-		mask, bounds, _, ok := face.Glyph(fixed.P(0, 0), idx)
-		if !ok {
-			continue
-		}
-
-		adv, ok := face.GlyphAdvance(idx)
 		if !ok {
 			continue
 		}
@@ -105,15 +93,16 @@ func Generate(cfg Config) (*BitmapFont, error) {
 		}
 
 		glyphs = append(glyphs, renderGlyph{
-			r:       r,
-			mask:    mask,
-			bounds:  bounds,
-			advance: adv,
+			r:         r,
+			imageMask: imageMask,
+			pointMask: pointMask,
+			bounds:    bounds,
+			advance:   advance,
 		})
 	}
 
 	// 2. Pack Glyphs (Simple Shelf Packing)
-	atlas := image.NewRGBA(image.Rect(0, 0, cfg.SheetW, cfg.SheetH))
+	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetW, config.SheetH))
 	charMap := make(map[rune]CharData)
 
 	currentX, currentY := 1, 1 // Padding
@@ -123,46 +112,54 @@ func Generate(cfg Config) (*BitmapFont, error) {
 	lineHeight := (metrics.Height).Ceil()
 	baseLine := (metrics.Ascent).Ceil()
 
-	for _, g := range glyphs {
-		gw := g.bounds.Max.X - g.bounds.Min.X
-		gh := g.bounds.Max.Y - g.bounds.Min.Y
+	for _, glyph := range glyphs {
+		glyphWidth := glyph.bounds.Max.X - glyph.bounds.Min.X
+		glyphHeight := glyph.bounds.Max.Y - glyph.bounds.Min.Y
 
-		// Wrap to next line if needed
-		if currentX+gw+1 >= cfg.SheetW {
+		// Wrap to the next line if needed
+		if currentX+glyphWidth+1 >= config.SheetW {
 			currentX = 1
 			currentY += rowHeight + 1
 			rowHeight = 0
 		}
 
-		if currentY+gh+1 >= cfg.SheetH {
-			return nil, fmt.Errorf("atlas size (%dx%d) too small for font size %v", cfg.SheetW, cfg.SheetH, cfg.FontSize)
+		if currentY+glyphHeight+1 >= config.SheetH {
+			return nil, fmt.Errorf("atlas size (%dx%d) too small for font size %v", config.SheetW, config.SheetH, config.FontSize)
 		}
 
 		// Draw glyph to atlas
-		// The Glyph function returns an image where the Dot is at origin relative to bounds.
-		// We need to shift it to our currentX, currentY.
 		drawPoint := image.Point{currentX, currentY}
 
-		// Draw the mask onto the RGBA atlas (white text, transparent background)
-		rect := image.Rectangle{Min: drawPoint, Max: drawPoint.Add(image.Point{gw, gh})}
-		draw.DrawMask(atlas, rect, image.White, image.Point{}, g.mask, g.bounds.Min, draw.Over)
+		// Create the destination rectangle on the atlas
+		dstRect := image.Rectangle{Min: drawPoint, Max: drawPoint.Add(image.Point{glyphWidth, glyphHeight})}
+
+		// Draw using the imageMask and the imageMask point returned by face.Glyph
+		draw.DrawMask(
+			atlas,
+			dstRect,
+			image.White,
+			image.Point{},
+			glyph.imageMask,
+			glyph.pointMask.Add(glyph.bounds.Min), // Important: Offset by bounds.Min + pointMask
+			draw.Over,
+		)
 
 		// Store Metrics
-		charMap[g.r] = CharData{
-			ID:       g.r,
+		charMap[glyph.r] = CharData{
+			ID:       glyph.r,
 			X:        currentX,
 			Y:        currentY,
-			Width:    gw,
-			Height:   gh,
-			XOffset:  g.bounds.Min.X,
-			YOffset:  g.bounds.Min.Y + baseLine, // Offset from top of line
-			XAdvance: g.advance.Ceil(),
+			Width:    glyphWidth,
+			Height:   glyphHeight,
+			XOffset:  glyph.bounds.Min.X,
+			YOffset:  glyph.bounds.Min.Y + baseLine,
+			XAdvance: glyph.advance.Ceil(),
 		}
 
 		// Advance cursor
-		currentX += gw + 1
-		if gh > rowHeight {
-			rowHeight = gh
+		currentX += glyphWidth + 1
+		if glyphHeight > rowHeight {
+			rowHeight = glyphHeight
 		}
 	}
 
@@ -172,7 +169,7 @@ func Generate(cfg Config) (*BitmapFont, error) {
 		LineHeight: lineHeight,
 		Base:       baseLine,
 		FaceName:   parsedFont.Name(truetype.NameIDFontFamily),
-		FontSize:   int(cfg.FontSize),
+		FontSize:   int(config.FontSize),
 	}, nil
 }
 
