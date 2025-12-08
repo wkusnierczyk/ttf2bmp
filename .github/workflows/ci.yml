@@ -1,54 +1,35 @@
-name: CI
+name: CI (Test & Lint)
 
-# Trigger on push to main or any pull request
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
-  build-and-test:
-    name: Build and Test
+  test:
+    name: Test & Lint
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out code
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-          cache: true # Automatically caches dependencies for faster builds
+          check-latest: true
+          cache: true # Automatically caches Go modules
 
       - name: Install Dependencies
-        run: make deps
+        run: go mod download
 
-      - name: Run Checks (Format & Vet)
-        # If you added the 'check' target to your Makefile, use 'make check'
-        # Otherwise, we can run the commands directly here:
-        run: |
-          go fmt ./...
-          go vet ./...
-
-      - name: Run Tests & Benchmarks
+      - name: Run Unit Tests
+        # Uses your Makefile target
         run: make test
 
-      - name: Build Local Binary
-        run: make build
-
-      - name: Cross-Compile All Platforms
-        # This uses the targets we defined in your Makefile earlier
-        run: |
-          make build-linux
-          make build-windows
-          make build-mac
-
-      - name: Upload Artifacts
-        # This saves the contents of the /bin folder so you can download them from GitHub
-        uses: actions/upload-artifact@v4
+      - name: Run Linter
+        # This action installs specific linter versions and caches better than manual install
+        uses: golangci/golangci-lint-action@v6
         with:
-          name: ttf2bmp-binaries
-          path: bin/
-          if-no-files-found: error
+          version: latest
