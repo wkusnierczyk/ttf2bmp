@@ -106,7 +106,8 @@ func Generate(config Config) (*BitmapFont, error) {
 	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetW, config.SheetH))
 	charMap := make(map[rune]CharData)
 
-	currentX, currentY := 1, 1 // Padding
+	//currentX, currentY := 1, 1 // Padding
+	currentX, currentY := config.Padding, config.Padding // Padding
 	rowHeight := 0
 
 	metrics := face.Metrics()
@@ -118,13 +119,13 @@ func Generate(config Config) (*BitmapFont, error) {
 		glyphHeight := glyph.bounds.Max.Y - glyph.bounds.Min.Y
 
 		// Wrap to the next line if needed
-		if currentX+glyphWidth+1 >= config.SheetW {
-			currentX = 1
-			currentY += rowHeight + 1
+		if currentX+glyphWidth+config.Padding >= config.SheetW {
+			currentX = config.Padding
+			currentY += rowHeight + config.Padding
 			rowHeight = 0
 		}
 
-		if currentY+glyphHeight+1 >= config.SheetH {
+		if currentY+glyphHeight+config.Padding >= config.SheetH {
 			return nil, fmt.Errorf("atlas size (%dx%d) too small for font size %v", config.SheetW, config.SheetH, config.FontSize)
 		}
 
@@ -158,7 +159,7 @@ func Generate(config Config) (*BitmapFont, error) {
 		}
 
 		// Advance cursor
-		currentX += glyphWidth + 1
+		currentX += glyphWidth + config.Padding
 		if glyphHeight > rowHeight {
 			rowHeight = glyphHeight
 		}
