@@ -10,8 +10,15 @@ TTF to Bitmap Font Converter.
 The `ttf2bmp` project provides a Go library and a command-line tool for converting TrueType fonts (`.ttf`) into Bitmap
 fonts.
 It generates a texture atlas (`.png`) and a descriptor file (`.fnt`), compatible
-with [AngelCode BMFont](https://www.angelcode.com/products/bmfont/) and standard game engines (Unity, Godot, LibGDX,
-etc.).
+with [AngelCode BMFont](https://www.angelcode.com/products/bmfont/) and standard game engines (Unity, Godot, LibGDX, etc.).
+
+## Contents
+
+* [Features](#features)
+* [Project structure](#project-structure)
+* [Internals and algorithms](#internals-and-algorithms)
+* [Dependencies](#dependencies)
+* [Building, testing, and running](#building-testing-and-running)
 
 ## Features
 
@@ -25,9 +32,14 @@ etc.).
 | **AngelCode Export**         | Fully compatible with the BMFont standard used by Unity, Godot, LibGDX, and custom engines                                  |
 | **High DPI Support**         | Configurable DPI and font size                                                                                              |
 
-In a future version:
+To be added in a future version:
 
-* **Kerning Support:** Extracts kerning pairs from the TTF and exports them to the `.fnt` file.
+* [**Kerning Support**](https://github.com/wkusnierczyk/ttf2bmp/issues/5)  
+Extract kerning pairs from the TTF and exports them to the `.fnt` file.
+* [**Multipage atlas**](https://github.com/wkusnierczyk/ttf2bmp/issues/4)  
+Avoid erroring out when atlas capacity is exceeded.
+* [**Signed distance field**](https://github.com/wkusnierczyk/ttf2bmp/issues/3)  
+Instead of storing opacity (0-255), store the distance from the pixel to the nearest glyph edge.
 
 ## Project structure
 
@@ -89,10 +101,10 @@ Run benchmark|`go test -bench=. -benchmem .`| `make bench` |
 | Run formatter      | `gofmt .`      | `make check` |
 | Clean up           |    | `make clean` |
 
-Consult the `Makefile` for additional targets for:
-* installing dependencies (`make deps`);
-* cleaning up (`make clean`);
-* running the CLI tool (`make run`).
+Consult the `Makefile` for additional targets to:
+* install dependencies (`make deps`);
+* runn the CLI tool (`make run`).
+* clean up (`make clean`);
 
 The `Makefile` also provides targets for cross-compiling to Linux, MacOS  (both `amd64` and `arm64` architectures), and Windows:
 
