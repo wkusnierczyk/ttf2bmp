@@ -7,7 +7,7 @@ TTF to Bitmap Font Converter.
 [![Go Reference](https://pkg.go.dev/badge/github.com/wkusnierczyk/ttf2bmp.svg)](https://pkg.go.dev/github.com/wkusnierczyk/ttf2bmp)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-![Icon](graphics/icon.png)
+![Icon](graphics/ttf2bmp.png)
 
 The `ttf2bmp` project provides a Go library and a command-line tool for converting TrueType fonts (`.ttf`) into Bitmap
 fonts.
