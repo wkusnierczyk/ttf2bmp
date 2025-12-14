@@ -130,13 +130,14 @@ func Generate(config Config) (*BitmapFont, error) {
 
 		// 6. Store Metadata
 		charMap[r] = CharData{
-			ID:       r,
-			X:        currentX,
-			Y:        currentY,
-			Width:    width,
-			Height:   height,
-			XOffset:  bounds.Min.X,
-			YOffset:  bounds.Min.Y + baseLine,
+			ID:      r,
+			X:       currentX,
+			Y:       currentY,
+			Width:   width,
+			Height:  height,
+			XOffset: bounds.Min.X,
+			// TODO: validate the formula
+			//YOffset:  bounds.Min.Y + baseLine,
 			XAdvance: advance.Ceil(),
 		}
 
