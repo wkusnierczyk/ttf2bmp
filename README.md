@@ -21,6 +21,7 @@ with [AngelCode BMFont](https://www.angelcode.com/products/bmfont/) and standard
 * [Internals and algorithms](#internals-and-algorithms)
 * [Dependencies](#dependencies)
 * [Building, testing, and running](#building-testing-and-running)
+* [Reference](#reference)
 
 ## Features
 
@@ -118,3 +119,11 @@ For details on how to invoke the CLI tool, consult its help page:
 ```bash
 ./bin/ttf2bmp -h
 ```
+
+## Reference
+
+* See [AngelCode BMFont](https://www.angelcode.com/products/bmfont/) for details of the `BMP` and `FNT` format.
+* For details on glyph terms and metrics, see [FreeType documentation](https://www.freetype.org/freetype2/docs/glyphs/glyphs-3.html), or the informative graphics below.
+
+![Glyph metrics](graphics/glyph_metrics_small.png)
+![Glyph terms](graphics/glyph_terms_small.png)
