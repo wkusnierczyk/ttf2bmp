@@ -74,7 +74,7 @@ func Generate(config Config) (*BitmapFont, error) {
 	lineHeight := (metrics.Height).Ceil()
 	baseLine := (metrics.Ascent).Ceil()
 
-	// 1. Prepare the Destination Image IMMEDIATELY
+	// Destination image
 	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetWidth, config.SheetHeight))
 	charMap := make(map[rune]CharData)
 
@@ -82,12 +82,12 @@ func Generate(config Config) (*BitmapFont, error) {
 	currentX, currentY := 1, 1
 	rowHeight := 0
 
-	// 2. Single Pass: Render -> Pack -> Draw -> Forget
-	for _, r := range config.Runes {
-		// Render the individual glyph
-		bounds, imageMask, pointMask, advance, ok := face.Glyph(fixed.P(0, 0), r)
+	// Single pass: Render -> Pack -> Draw -> Forget
+	for _, rune_ := range config.Runes {
+
+		bounds, imageMask, pointMask, advance, ok := face.Glyph(fixed.P(0, 0), rune_)
 		if !ok {
-			fmt.Printf("Skipping rune [%c] - not found\n", r)
+			fmt.Printf("Skipping rune [%c] - not found in the TTF file\n", rune_)
 			continue
 		}
 
@@ -99,11 +99,11 @@ func Generate(config Config) (*BitmapFont, error) {
 		width := maxX - minX
 		height := maxY - minY
 
-		// 3. Smart Wrapping Logic
-		// Check if we fit in the current row
+		// Row wrapping -- check if we fit in the current row
 		if currentX+width >= config.SheetWidth {
 			currentX = 1
 			// Move Y down by the tallest item in the previous row
+			// TODO: it should be possible to somplify this: if rowHeight = 0 at wrapping time, then just stop
 			if rowHeight == 0 {
 				currentY += lineHeight + config.Padding
 			} else {
@@ -112,18 +112,18 @@ func Generate(config Config) (*BitmapFont, error) {
 			rowHeight = 0
 		}
 
-		// 4. Height Check
+		// Check height
 		if currentY+height >= config.SheetHeight {
 			return nil, fmt.Errorf("atlas filled up! stopped at rune [%c]. Size (%dx%d) too small",
-				r, config.SheetWidth, config.SheetHeight)
+				rune_, config.SheetWidth, config.SheetHeight)
 		}
 
-		// 5. Draw IMMEDIATELY
-		dstRect := image.Rect(currentX, currentY, currentX+width, currentY+height)
+		// Draw IMMEDIATELY
+		destinationRectangle := image.Rect(currentX, currentY, currentX+width, currentY+height)
 
 		draw.DrawMask(
 			atlas,
-			dstRect,
+			destinationRectangle,
 			image.White,
 			image.Point{},
 			imageMask,
@@ -131,9 +131,9 @@ func Generate(config Config) (*BitmapFont, error) {
 			draw.Over,
 		)
 
-		// 6. Store Metadata
-		charMap[r] = CharData{
-			ID:      r,
+		// Store Metadata
+		charMap[rune_] = CharData{
+			ID:      rune_,
 			X:       currentX,
 			Y:       currentY,
 			Width:   width,
@@ -141,10 +141,11 @@ func Generate(config Config) (*BitmapFont, error) {
 			XOffset: bounds.Min.X,
 			// TODO: validate the formula
 			//YOffset:  bounds.Min.Y + baseLine,
+			YOffset:  bounds.Min.Y,
 			XAdvance: advance.Ceil(),
 		}
 
-		// 7. Update Cursor
+		// Update Cursor
 		currentX += width + config.Padding
 		if height > rowHeight {
 			rowHeight = height
