@@ -63,8 +63,16 @@ func Generate(config Config) (*BitmapFont, error) {
 	}
 	face := truetype.NewFace(parsedFont, &options)
 	defer func() {
-		_ = face.Close()
+		err := face.Close()
+		if err != nil {
+			fmt.Println("Warning: failed to close font face: %w", err)
+		}
 	}()
+
+	// Font metrics
+	metrics := face.Metrics()
+	lineHeight := (metrics.Height).Ceil()
+	baseLine := (metrics.Ascent).Ceil()
 
 	// 1. Prepare the Destination Image IMMEDIATELY
 	atlas := image.NewRGBA(image.Rect(0, 0, config.SheetWidth, config.SheetHeight))
@@ -73,11 +81,6 @@ func Generate(config Config) (*BitmapFont, error) {
 	// Cursor state
 	currentX, currentY := 1, 1
 	rowHeight := 0
-
-	// Font metrics
-	metrics := face.Metrics()
-	lineHeight := (metrics.Height).Ceil()
-	baseLine := (metrics.Ascent).Ceil()
 
 	// 2. Single Pass: Render -> Pack -> Draw -> Forget
 	for _, r := range config.Runes {
@@ -90,8 +93,8 @@ func Generate(config Config) (*BitmapFont, error) {
 
 		// Calculate dimensions
 		maxX := bounds.Max.X
-		maxY := bounds.Max.Y
 		minX := bounds.Min.X
+		maxY := bounds.Max.Y
 		minY := bounds.Min.Y
 		width := maxX - minX
 		height := maxY - minY
