@@ -83,11 +83,11 @@ func Generate(config Config) (*BitmapFont, error) {
 	rowHeight := 0
 
 	// Single pass: Render -> Pack -> Draw -> Forget
-	for _, rune_ := range config.Runes {
+	for index, rune_ := range config.Runes {
 
 		bounds, imageMask, pointMask, advance, ok := face.Glyph(fixed.P(0, 0), rune_)
 		if !ok {
-			fmt.Printf("Skipping rune [%c] - not found in the TTF file\n", rune_)
+			fmt.Printf("Skipping %d rune [%c] - not found in the TTF file\n", index, rune_)
 			continue
 		}
 
@@ -133,15 +133,13 @@ func Generate(config Config) (*BitmapFont, error) {
 
 		// Store Metadata
 		charMap[rune_] = CharData{
-			ID:      rune_,
-			X:       currentX,
-			Y:       currentY,
-			Width:   width,
-			Height:  height,
-			XOffset: bounds.Min.X,
-			// TODO: validate the formula
-			//YOffset:  bounds.Min.Y + baseLine,
-			YOffset:  bounds.Min.Y,
+			ID:       rune_,
+			X:        currentX,
+			Y:        currentY,
+			Width:    width,
+			Height:   height,
+			XOffset:  bounds.Min.X,
+			YOffset:  bounds.Min.Y + baseLine,
 			XAdvance: advance.Ceil(),
 		}
 
@@ -164,40 +162,47 @@ func Generate(config Config) (*BitmapFont, error) {
 
 // SavePNG saves the texture atlas.
 func (bf *BitmapFont) SavePNG(filename string) error {
-	f, err := os.Create(filename)
+	file, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_ = f.Close()
+		err = file.Close()
+		if err != nil {
+			fmt.Println("Warning: failed to close PNG file: %w", err)
+		}
+
 	}()
-	return png.Encode(f, bf.Image)
+	return png.Encode(file, bf.Image)
 }
 
 // SaveFNT saves the AngelCode text format descriptor.
 func (bf *BitmapFont) SaveFNT(filename, imgFilename string) error {
-	f, err := os.Create(filename)
+	file, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_ = f.Close()
+		err = file.Close()
+		if err != nil {
+			fmt.Println("Warning: failed to close PNG file: %writer", err)
+		}
 	}()
-	w := bufio.NewWriter(f)
 
-	_, _ = fmt.Fprintf(w, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=1 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1\n", bf.FaceName, bf.FontSize)
+	writer := bufio.NewWriter(file)
+	_, _ = fmt.Fprintf(writer, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=1 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1\n", bf.FaceName, bf.FontSize)
 	width := bf.Image.Bounds().Max.X
 	height := bf.Image.Bounds().Max.Y
-	_, _ = fmt.Fprintf(w, "common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0\n", bf.LineHeight, bf.Base, width, height)
-	_, _ = fmt.Fprintf(w, "page id=0 file=\"%s\"\n", imgFilename)
-	_, _ = fmt.Fprintf(w, "chars count=%d\n", len(bf.Chars))
+	_, _ = fmt.Fprintf(writer, "common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0\n", bf.LineHeight, bf.Base, width, height)
+	_, _ = fmt.Fprintf(writer, "page id=0 file=\"%s\"\n", imgFilename)
+	_, _ = fmt.Fprintf(writer, "chars count=%d\n", len(bf.Chars))
 
-	for _, c := range bf.Chars {
-		_, _ = fmt.Fprintf(w, "char id=%-4d x=%-4d y=%-4d width=%-4d height=%-4d xoffset=%-4d yoffset=%-4d xadvance=%-4d page=0 chnl=15\n",
-			c.ID, c.X, c.Y, c.Width, c.Height, c.XOffset, c.YOffset, c.XAdvance)
+	for _, char := range bf.Chars {
+		_, _ = fmt.Fprintf(writer, "char id=%-4d x=%-4d y=%-4d width=%-4d height=%-4d xoffset=%-4d yoffset=%-4d xadvance=%-4d page=0 chnl=15\n",
+			char.ID, char.X, char.Y, char.Width, char.Height, char.XOffset, char.YOffset, char.XAdvance)
 	}
 
-	return w.Flush()
+	return writer.Flush()
 }
 
 // Helper to load file bytes
