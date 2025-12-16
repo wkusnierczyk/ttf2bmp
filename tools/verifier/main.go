@@ -11,25 +11,33 @@ import (
 	"strconv"
 	"strings"
 
-	// Support BMP decoding
 	_ "golang.org/x/image/bmp"
 )
 
-// Simple Char struct
 type CharDef struct {
 	ID, X, Y, W, H, XOffset, YOffset, XAdvance int
 }
 
 func main() {
 	fntPath := flag.String("fnt", "", "Path to .fnt")
+
+	// CUSTOM USAGE TEXT
+	flag.Usage = func() {
+		_, err := fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", "verifier")
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		flag.PrintDefaults()
+	}
+
 	flag.Parse()
 
 	if *fntPath == "" {
-		fmt.Println("Usage: go run verify_fonts.go -fnt <file.fnt>")
+		fmt.Println("Usage: go run tools/verifier/main.go -fnt <file.fnt>")
 		os.Exit(1)
 	}
 
-	// Assuming BMP is same name but .bmp extension
 	bmpPath := strings.TrimSuffix(*fntPath, ".fnt") + ".bmp"
 	outPath := strings.TrimSuffix(*fntPath, ".fnt") + "_verify.png"
 
@@ -37,10 +45,10 @@ func main() {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("Created:", outPath)
+	fmt.Println("Created verification image:", outPath)
 }
 
-func runVerify(fnt, bmp, out string) error {
+func runVerify(fnt, bmp, out string) (err error) {
 	chars, err := parseFNT(fnt)
 	if err != nil {
 		return err
@@ -50,16 +58,22 @@ func runVerify(fnt, bmp, out string) error {
 	if err != nil {
 		return err
 	}
-	defer fImg.Close()
+	defer func() {
+		// For readers, strictly checking close error is less critical,
+		// but explicit ignore `_ =` satisfies linter if we don't want to propagate.
+		// Propagating is safer.
+		if cerr := fImg.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	srcImg, _, err := image.Decode(fImg)
 	if err != nil {
 		return err
 	}
 
-	// Create Output Canvas (1024 width)
-	dstImg := image.NewRGBA(image.Rect(0, 0, 1024, 2048)) // Large fixed height for simplicity
-
+	// Create Output Canvas
+	dstImg := image.NewRGBA(image.Rect(0, 0, 1024, 2048))
 	cursorX, cursorY := 10, 50
 	rowH := 0
 
@@ -82,19 +96,30 @@ func runVerify(fnt, bmp, out string) error {
 		cursorX += c.XAdvance
 	}
 
-	fOut, _ := os.Create(out)
-	defer fOut.Close()
+	fOut, err := os.Create(out)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := fOut.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
 	return png.Encode(fOut, dstImg)
 }
 
-func parseFNT(path string) ([]CharDef, error) {
+func parseFNT(path string) (chars []CharDef, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
-	var chars []CharDef
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -113,5 +138,5 @@ func parseFNT(path string) ([]CharDef, error) {
 			})
 		}
 	}
-	return chars, nil
+	return chars, scanner.Err()
 }

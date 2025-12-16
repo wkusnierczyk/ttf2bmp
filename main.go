@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	// IMPORT LOCAL PACKAGE
 	"ttf2bmp/converter"
 )
 
@@ -21,11 +20,17 @@ type Config struct {
 	OutputDir   string
 }
 
-// Global UI buffer
+// Global UI buffer for the rolling window
 var logBuffer []string
 
 func main() {
 	var fontsFlag, sizesFlag, charsFlag, outDir string
+
+	flag.Usage = func() {
+		// FIX: Explicitly ignore return values to satisfy errcheck
+		_, _ = fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", "ttf2bmp")
+		flag.PrintDefaults()
+	}
 
 	flag.StringVar(&fontsFlag, "fonts", "", "Glob pattern (e.g. 'assets/*.ttf')")
 	flag.StringVar(&fontsFlag, "f", "", "Short for --fonts")
@@ -44,14 +49,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 1. Try simple Glob
 	files, err := filepath.Glob(cfg.FontPattern)
 	if err != nil {
 		fmt.Printf("Glob error: %v\n", err)
 		os.Exit(1)
 	}
+
+	// 2. Fallback: If Glob returns nothing, check if it's a direct file path
 	if len(files) == 0 {
-		fmt.Printf("No fonts found for pattern: %s\n", cfg.FontPattern)
-		os.Exit(0)
+		if _, err := os.Stat(cfg.FontPattern); err == nil {
+			files = []string{cfg.FontPattern}
+		} else {
+			fmt.Printf("No fonts found for pattern: %s\n", cfg.FontPattern)
+			os.Exit(0)
+		}
 	}
 
 	processBatch(files, cfg)
@@ -61,15 +73,20 @@ func processBatch(files []string, cfg Config) {
 	totalJobs := len(files) * len(cfg.Sizes)
 	currentJob := 0
 	successCount := 0
+	var failures []string
 
 	// UI Setup
 	logBuffer = make([]string, 5)
 	fmt.Print("\n\n\n\n\n\n") // Reserve 6 lines
-	// Hide cursor
-	fmt.Print("\033[?25l")
+	fmt.Print("\033[?25l")    // Hide cursor
 	defer fmt.Print("\033[?25h")
 
-	os.MkdirAll(cfg.OutputDir, 0755)
+	if err := os.MkdirAll(cfg.OutputDir, 0755); err != nil {
+		fmt.Print("\033[?25h")
+		fmt.Printf("Error: Failed to create output directory: %v\n", err)
+		os.Exit(1)
+	}
+
 	start := time.Now()
 
 	for _, fontPath := range files {
@@ -83,19 +100,31 @@ func processBatch(files []string, cfg Config) {
 			msg := fmt.Sprintf("Processing %s @ %dpx...", baseName, size)
 			updateUI(currentJob, totalJobs, msg)
 
-			// CALL LIBRARY
 			err := converter.Generate(fontPath, size, cfg.Chars, outPrefix)
 
 			if err != nil {
-				updateUI(currentJob, totalJobs, fmt.Sprintf("FAIL %s: %v", baseName, err))
+				errMsg := fmt.Sprintf("FAIL %s @ %dpx: %v", baseName, size, err)
+				updateUI(currentJob, totalJobs, errMsg)
+				failures = append(failures, errMsg)
 			} else {
 				successCount++
 			}
 		}
 	}
 
-	fmt.Print("\033[6A\033[J") // Clear UI area
+	// Cleanup UI
+	fmt.Print("\033[6A\033[J") // Clear rolling UI area
 	fmt.Printf("Done in %v. %d/%d successful.\n", time.Since(start).Round(time.Millisecond), successCount, totalJobs)
+
+	// Print Persistent Failure Report
+	if len(failures) > 0 {
+		fmt.Println("\n=== FAILURE REPORT ===")
+		for _, msg := range failures {
+			fmt.Printf(" -> %s\n", msg)
+		}
+		fmt.Println("======================")
+		os.Exit(1)
+	}
 }
 
 func updateUI(current, total int, msg string) {

@@ -1,24 +1,30 @@
 package converter
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-// Helper to locate a valid TTF for testing.
-// In CI, we will download a font to this location.
+// Helper to locate a valid TTF for testing (downloaded by CI)
 const testFontPath = "../test_data/Roboto-Regular.ttf"
 
 func TestMain(m *testing.M) {
 	// Setup: Ensure test_data directory exists
-	os.MkdirAll("../test_data", 0755)
+	if err := os.MkdirAll("../test_data", 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Test setup failed: could not create ../test_data: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Run Tests
 	code := m.Run()
 
 	// Teardown: Cleanup output
-	os.RemoveAll("../test_output")
+	if err := os.RemoveAll("../test_output"); err != nil {
+		fmt.Fprintf(os.Stderr, "Test teardown warning: could not remove ../test_output: %v\n", err)
+	}
+
 	os.Exit(code)
 }
 
@@ -37,7 +43,10 @@ func TestGenerate_Success(t *testing.T) {
 	}
 
 	outDir := "../test_output"
-	os.MkdirAll(outDir, 0755)
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		t.Fatalf("Failed to create output directory: %v", err)
+	}
+
 	outPrefix := filepath.Join(outDir, "test_font")
 
 	err := Generate(testFontPath, 32, "ABCabc123", outPrefix)
@@ -62,12 +71,18 @@ func BenchmarkGenerate(b *testing.B) {
 
 	// Quiet output for benchmark
 	outDir := "../test_output/bench"
-	os.MkdirAll(outDir, 0755)
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		b.Fatalf("Failed to create benchmark directory: %v", err)
+	}
+
 	outPrefix := filepath.Join(outDir, "bench_font")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// We use a small char set for the benchmark to measure overhead + render
-		Generate(testFontPath, 24, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", outPrefix)
+		// We must check the error here to satisfy linter,
+		// and also to ensure we aren't benchmarking a fast-fail error path.
+		if err := Generate(testFontPath, 24, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", outPrefix); err != nil {
+			b.Fatalf("Benchmark failed on iteration %d: %v", i, err)
+		}
 	}
 }
