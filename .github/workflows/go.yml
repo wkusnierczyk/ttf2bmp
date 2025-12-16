@@ -2,9 +2,9 @@ name: Go Build & Test
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches:
 
 jobs:
   build-and-test:
@@ -50,7 +50,7 @@ jobs:
           
           # 3. Run the Verification Tool (Compare TTF vs BMP)
           # This will exit with status 1 (fail) if pixels differ too much
-          go run tools/test_conversion.go \
+          go run tools/validate.go \
             -ttf "test_data/Roboto-Regular.ttf" \
             -fnt "output/Roboto-Regular-32.fnt" \
             -size 32 \

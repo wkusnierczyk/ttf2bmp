@@ -1,6 +1,7 @@
 # Variables
 BINARY_NAME=ttf2bmp
-CMD_PATH=./cmd/ttf2bmp
+# TODO: may need update
+CMD_PATH=./main.go
 OUTPUT_DIR=bin
 
 # Go related variables
