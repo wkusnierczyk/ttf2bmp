@@ -14,15 +14,23 @@ import (
 	"strconv"
 	"strings"
 
-	_ "golang.org/x/image/bmp" // Support BMP decoding
+	_ "golang.org/x/image/bmp"
 )
 
 func main() {
 	fntPath := flag.String("fnt", "", "Path to .fnt file")
+	// NEW: Output flag
+	outPath := flag.String("out", "", "Output path for verification image (e.g. test_output/result.png)")
 	flag.Parse()
 
 	if *fntPath == "" {
 		log.Fatal("Please provide -fnt path")
+	}
+
+	// Default output if not specified: "verification_result.png" in the same folder
+	finalOutPath := *outPath
+	if finalOutPath == "" {
+		finalOutPath = filepath.Join(filepath.Dir(*fntPath), "verification_result.png")
 	}
 
 	// 1. Parse FNT
@@ -40,7 +48,7 @@ func main() {
 		log.Fatalf("Failed to load image %s: %v", imgPath, err)
 	}
 
-	// 3. Create a canvas to draw on (Copy of source)
+	// 3. Create a canvas
 	b := srcImg.Bounds()
 	dstImg := image.NewRGBA(b)
 	draw.Draw(dstImg, b, srcImg, image.Point{}, draw.Src)
@@ -52,12 +60,11 @@ func main() {
 	}
 
 	// 5. Save Result
-	outPath := filepath.Join(dir, "verification_result.png")
-	if err := saveImg(outPath, dstImg); err != nil {
+	if err := saveImg(finalOutPath, dstImg); err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("Verification complete. Check %s\n", outPath)
+	fmt.Printf("Verification complete. Check %s\n", finalOutPath)
 }
 
 // Helper to load image with proper close handling
