@@ -144,8 +144,11 @@ run: build-cli fetch-test-data
 # Reads from DEMO_OUT_DIR (must match 'run').
 verify: run build-verifier
 	@echo "  >  Running Visual Verification..."
+	@rm -rf $(TEST_OUT_DIR)/verifier
+	@mkdir -p $(TEST_OUT_DIR)/verifier
 	@./$(TOOL_VERIFIER_BIN) \
-		-fnt "$(DEMO_OUT_DIR)/$(TEST_FONT_NAME)-$(TEST_SIZE).fnt"
+		-fnt "$(DEMO_OUT_DIR)/$(TEST_FONT_NAME)-$(TEST_SIZE).fnt" \
+		-out "$(TEST_OUT_DIR)/verifier"
 
 # 3. VALIDATE (Mathematical Regression)
 # Forces BMP and uses isolated TEST_OUT_DIR.
