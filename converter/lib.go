@@ -13,8 +13,8 @@ import (
 )
 
 // Generate creates the Font files (image + fnt).
-// Now accepts 'padding' to add space between characters.
-func Generate(fontPath string, size int, chars string, outPrefix string, format string, padding int) (err error) {
+// Now accepts 'hinting' ("none", "vertical", "full")
+func Generate(fontPath string, size int, chars string, outPrefix string, format string, padding int, hinting string) (err error) {
 	// 1. Read & Parse Font
 	fontBytes, err := os.ReadFile(fontPath)
 	if err != nil {
@@ -25,11 +25,22 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 		return fmt.Errorf("parsing font: %w", err)
 	}
 
-	// 2. Setup Font Face
+	// 2. Resolve Hinting Option
+	var h font.Hinting
+	switch hinting {
+	case "none":
+		h = font.HintingNone
+	case "vertical":
+		h = font.HintingVertical
+	default:
+		h = font.HintingFull // Default to crisp/sharp
+	}
+
+	// 3. Setup Font Face
 	face, err := opentype.NewFace(f, &opentype.FaceOptions{
 		Size:    float64(size),
 		DPI:     72,
-		Hinting: font.HintingFull,
+		Hinting: h, // Use the selected hinting
 	})
 	if err != nil {
 		return fmt.Errorf("creating face: %w", err)
@@ -40,7 +51,7 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 		}
 	}()
 
-	// 3. Metrics & Canvas Setup
+	// 4. Metrics & Canvas Setup
 	metrics := face.Metrics()
 	ascent := metrics.Ascent.Ceil()
 	lineHeight := metrics.Height.Ceil()
@@ -48,17 +59,17 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 	var totalWidth int
 	var validCharCount int
 
-	// Measure loop: Calculate total width including padding
+	// Measure loop
 	for _, char := range chars {
 		if _, advance, ok := face.GlyphBounds(char); ok {
-			totalWidth += advance.Ceil() + padding // Add padding for every char
+			totalWidth += advance.Ceil() + padding
 			validCharCount++
 		}
 	}
 
 	img := image.NewRGBA(image.Rect(0, 0, totalWidth, lineHeight))
 
-	// Initialize the Drawer
+	// Initialize Drawer
 	drawer := &font.Drawer{
 		Dst:  img,
 		Src:  image.White,
@@ -66,8 +77,7 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 		Dot:  fixed.P(0, ascent),
 	}
 
-	// 4. Draw Characters Individually (to insert padding)
-	// We capture the starting X position of each char to match FNT generation exactly
+	// 5. Draw Characters Individually
 	charPositions := make(map[rune]int)
 	currentX := 0
 
@@ -79,20 +89,22 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 
 		width := advance.Ceil()
 
-		// Record position for FNT (before drawing)
+		// Record position
 		charPositions[char] = currentX
 
-		// Draw the character
-		drawer.DrawString(string(char))
+		// CRITICAL FIX: Explicitly set the Dot to the exact integer position.
+		// This prevents sub-pixel accumulation errors (drifting) and ensures
+		// the image pixels align 1:1 with the FNT coordinates.
+		drawer.Dot = fixed.P(currentX, ascent)
 
-		// Manually add padding to the drawer's dot
-		drawer.Dot.X += fixed.I(padding)
+		// Draw
+		drawer.DrawString(string(char))
 
 		// Advance local integer tracker
 		currentX += width + padding
 	}
 
-	// 5. Save Image
+	// 6. Save Image
 	ext := "." + format
 	if err := func() error {
 		imgFile, err := os.Create(outPrefix + ext)
@@ -120,7 +132,7 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 		return err
 	}
 
-	// 6. Save FNT Data
+	// 7. Save FNT Data
 	if err := func() error {
 		fntFile, err := os.Create(outPrefix + ".fnt")
 		if err != nil {
@@ -135,8 +147,6 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 
 		fileName := filepath.Base(outPrefix) + ext
 
-		// Header
-		// We set 'spacing' to reflect the horizontal padding.
 		if _, err := fmt.Fprintf(fntFile, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=0 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=%d,1\n", filepath.Base(fontPath), size, padding); err != nil {
 			return err
 		}
@@ -150,15 +160,13 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 			return err
 		}
 
-		// Characters
 		for _, char := range chars {
 			_, advance, ok := face.GlyphBounds(char)
 			if !ok {
 				continue
 			}
-
 			width := advance.Ceil()
-			xPos := charPositions[char] // Retrieve the exact drawn position
+			xPos := charPositions[char]
 
 			if _, err := fmt.Fprintf(fntFile, "char id=%d x=%d y=0 width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=0 chnl=15\n",
 				char, xPos, width, lineHeight, width); err != nil {
