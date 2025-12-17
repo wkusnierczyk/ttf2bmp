@@ -22,14 +22,14 @@ type Config struct {
 	Chars       string
 	OutputDir   string
 	Format      string
-	Padding     int // New field
+	Padding     int
+	Hinting     string // New field
 }
 
-// Global UI buffer
 var logBuffer []string
 
 func main() {
-	var fontsFlag, sizesFlag, charsFlag, outDir, typeFlag string
+	var fontsFlag, sizesFlag, charsFlag, outDir, typeFlag, hintingFlag string
 	var paddingFlag int
 	var showVersion bool
 
@@ -48,9 +48,12 @@ func main() {
 	flag.StringVar(&outDir, "o", ".", "Short for --out")
 	flag.StringVar(&typeFlag, "type", "png", "Output type: 'png' or 'bmp'")
 	flag.StringVar(&typeFlag, "t", "png", "Short for --type")
-	// NEW FLAGS
 	flag.IntVar(&paddingFlag, "padding", 2, "Padding between characters (pixels)")
 	flag.IntVar(&paddingFlag, "p", 2, "Short for --padding")
+
+	// NEW: Hinting flag
+	flag.StringVar(&hintingFlag, "hinting", "full", "Hinting: 'none' (smooth) or 'full' (crisp)")
+	flag.StringVar(&hintingFlag, "h", "full", "Short for --hinting")
 
 	flag.BoolVar(&showVersion, "version", false, "Print version")
 
@@ -61,7 +64,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfg, err := validateInputs(fontsFlag, sizesFlag, charsFlag, outDir, typeFlag, paddingFlag)
+	cfg, err := validateInputs(fontsFlag, sizesFlag, charsFlag, outDir, typeFlag, paddingFlag, hintingFlag)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		flag.Usage()
@@ -114,12 +117,11 @@ func processBatch(files []string, cfg Config) {
 			currentJob++
 			outPrefix := filepath.Join(cfg.OutputDir, fmt.Sprintf("%s-%d", nameNoExt, size))
 
-			// Include padding in the log message for clarity
-			msg := fmt.Sprintf("Processing %s @ %dpx (pad:%d) ...", baseName, size, cfg.Padding)
+			msg := fmt.Sprintf("Processing %s @ %dpx (pad:%d, hint:%s)...", baseName, size, cfg.Padding, cfg.Hinting)
 			updateUI(currentJob, totalJobs, msg)
 
-			// Pass cfg.Padding to Generate
-			err := converter.Generate(fontPath, size, cfg.Chars, outPrefix, cfg.Format, cfg.Padding)
+			// Pass Hinting
+			err := converter.Generate(fontPath, size, cfg.Chars, outPrefix, cfg.Format, cfg.Padding, cfg.Hinting)
 
 			if err != nil {
 				errMsg := fmt.Sprintf("FAIL %s @ %dpx: %v", baseName, size, err)
@@ -144,7 +146,7 @@ func processBatch(files []string, cfg Config) {
 	}
 }
 
-func validateInputs(f, s, c, o, t string, p int) (Config, error) {
+func validateInputs(f, s, c, o, t string, p int, h string) (Config, error) {
 	if f == "" || s == "" || c == "" {
 		return Config{}, fmt.Errorf("missing arguments")
 	}
@@ -156,6 +158,11 @@ func validateInputs(f, s, c, o, t string, p int) (Config, error) {
 
 	if p < 0 {
 		return Config{}, fmt.Errorf("padding cannot be negative")
+	}
+
+	h = strings.ToLower(h)
+	if h != "none" && h != "vertical" && h != "full" {
+		return Config{}, fmt.Errorf("invalid hinting: %s (use 'none', 'vertical', 'full')", h)
 	}
 
 	var sizeInts []int
@@ -174,7 +181,8 @@ func validateInputs(f, s, c, o, t string, p int) (Config, error) {
 		Chars:       c,
 		OutputDir:   o,
 		Format:      t,
-		Padding:     p, // Set padding
+		Padding:     p,
+		Hinting:     h, // Set hinting
 	}, nil
 }
 
