@@ -13,7 +13,8 @@ import (
 )
 
 // Generate creates the Font files (image + fnt).
-func Generate(fontPath string, size int, chars string, outPrefix string, format string) (err error) {
+// Now accepts 'padding' to add space between characters.
+func Generate(fontPath string, size int, chars string, outPrefix string, format string, padding int) (err error) {
 	// 1. Read & Parse Font
 	fontBytes, err := os.ReadFile(fontPath)
 	if err != nil {
@@ -45,28 +46,53 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 	lineHeight := metrics.Height.Ceil()
 
 	var totalWidth int
-	var validCharCount int // <--- NEW: Track valid characters
+	var validCharCount int
 
-	// Measure loop: Check which chars actually exist in the font
+	// Measure loop: Calculate total width including padding
 	for _, char := range chars {
 		if _, advance, ok := face.GlyphBounds(char); ok {
-			totalWidth += advance.Ceil()
-			validCharCount++ // <--- NEW: Increment count
+			totalWidth += advance.Ceil() + padding // Add padding for every char
+			validCharCount++
 		}
 	}
 
 	img := image.NewRGBA(image.Rect(0, 0, totalWidth, lineHeight))
-	dot := fixed.P(0, ascent)
 
+	// Initialize the Drawer
 	drawer := &font.Drawer{
 		Dst:  img,
 		Src:  image.White,
 		Face: face,
-		Dot:  dot,
+		Dot:  fixed.P(0, ascent),
 	}
-	drawer.DrawString(chars)
 
-	// 4. Save Image
+	// 4. Draw Characters Individually (to insert padding)
+	// We capture the starting X position of each char to match FNT generation exactly
+	charPositions := make(map[rune]int)
+	currentX := 0
+
+	for _, char := range chars {
+		_, advance, ok := face.GlyphBounds(char)
+		if !ok {
+			continue
+		}
+
+		width := advance.Ceil()
+
+		// Record position for FNT (before drawing)
+		charPositions[char] = currentX
+
+		// Draw the character
+		drawer.DrawString(string(char))
+
+		// Manually add padding to the drawer's dot
+		drawer.Dot.X += fixed.I(padding)
+
+		// Advance local integer tracker
+		currentX += width + padding
+	}
+
+	// 5. Save Image
 	ext := "." + format
 	if err := func() error {
 		imgFile, err := os.Create(outPrefix + ext)
@@ -94,7 +120,7 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 		return err
 	}
 
-	// 5. Save FNT Data
+	// 6. Save FNT Data
 	if err := func() error {
 		fntFile, err := os.Create(outPrefix + ".fnt")
 		if err != nil {
@@ -110,7 +136,8 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 		fileName := filepath.Base(outPrefix) + ext
 
 		// Header
-		if _, err := fmt.Fprintf(fntFile, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=0 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1\n", filepath.Base(fontPath), size); err != nil {
+		// We set 'spacing' to reflect the horizontal padding.
+		if _, err := fmt.Fprintf(fntFile, "info face=\"%s\" size=%d bold=0 italic=0 charset=\"\" unicode=0 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=%d,1\n", filepath.Base(fontPath), size, padding); err != nil {
 			return err
 		}
 		if _, err := fmt.Fprintf(fntFile, "common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0\n", lineHeight, ascent, totalWidth, lineHeight); err != nil {
@@ -119,29 +146,24 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 		if _, err := fmt.Fprintf(fntFile, "page id=0 file=\"%s\"\n", fileName); err != nil {
 			return err
 		}
-
-		// <--- NEW: Write the chars count line
 		if _, err := fmt.Fprintf(fntFile, "chars count=%d\n", validCharCount); err != nil {
 			return err
 		}
 
 		// Characters
-		cursorX := 0
 		for _, char := range chars {
-			// We must repeat the check to ensure we only write valid chars
-			// (Though in your current usage, you likely provide valid chars only)
 			_, advance, ok := face.GlyphBounds(char)
 			if !ok {
 				continue
 			}
 
 			width := advance.Ceil()
+			xPos := charPositions[char] // Retrieve the exact drawn position
 
 			if _, err := fmt.Fprintf(fntFile, "char id=%d x=%d y=0 width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=0 chnl=15\n",
-				char, cursorX, width, lineHeight, width); err != nil {
+				char, xPos, width, lineHeight, width); err != nil {
 				return err
 			}
-			cursorX += width
 		}
 		return nil
 	}(); err != nil {

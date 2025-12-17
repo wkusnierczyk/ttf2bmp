@@ -53,16 +53,13 @@ func main() {
 	}
 
 	// 5. Determine Output Path
-	targetDir := dir // Default: save alongside FNT
+	targetDir := dir
 	if *outDir != "" {
 		targetDir = *outDir
-		// Ensure output directory exists
 		if err := os.MkdirAll(targetDir, 0755); err != nil {
 			log.Fatalf("Failed to create output dir: %v", err)
 		}
 	}
-
-	// FIX: Construct the full file path, do not use targetDir directly
 	outPath := filepath.Join(targetDir, "verification_result.png")
 
 	// 6. Save Result
@@ -73,7 +70,7 @@ func main() {
 	fmt.Printf("Verification complete. Check %s\n", outPath)
 }
 
-// ... [Helper functions below remain exactly the same] ...
+// --- Helpers ---
 
 func loadImg(path string) (image.Image, error) {
 	f, err := os.Open(path)
@@ -109,14 +106,19 @@ func drawRect(img *image.RGBA, x, y, w, h int, c color.RGBA) {
 	}
 }
 
-type CharDef struct{ ID, X, Y, W, H int }
+// --- FNT Parsing ---
+
+type CharDef struct {
+	ID, X, Y, W, H int
+}
 
 func parseFNT(path string) (map[int]CharDef, string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, "", err
 	}
-	defer f.Close()
+	// FIX: Explicitly ignore error on defer Close
+	defer func() { _ = f.Close() }()
 
 	chars := make(map[int]CharDef)
 	var imgFile string
