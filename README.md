@@ -1,7 +1,7 @@
 # ttf2bmp
 
-[![Code Quality](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_code_quality.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_code_quality.yml)
-[![Functional Verification](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_functional_integration.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_functional_integration.yml)
+[![Code Quality](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/quality.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/quality.yml)
+[![Functional Verification](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/integration.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/integration.yml)
 
 **ttf2bmp** is a robust command-line tool written in Go that converts TrueType Fonts (TTF) into AngelCode BMFont format (BMP image + FNT descriptor). It is designed for high-volume batch processing, featuring a rolling progress dashboard, parallel-ready architecture, and automated regression testing.
 
@@ -114,12 +114,12 @@ Artifacts created in `bin/`:
 
 We use GitHub Actions to enforce quality standards:
 
-1.  **Code Quality** (`test_code_quality.yml`):
+1.  **Code Quality** (`quality.yml`):
     * Runs `golangci-lint`.
     * Runs unit tests (`go test -race`).
     * Runs benchmarks.
 
-2.  **Functional Verification** (`test_functional_integration.yml`):
+2.  **Functional Verification** (`integration.yml`):
     * Builds the CLI.
     * Downloads a real open-source font (Roboto).
     * Runs the `ttf2bmp` tool to generate assets.
