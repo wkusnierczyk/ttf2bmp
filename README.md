@@ -186,3 +186,13 @@ We use GitHub Actions to enforce quality standards:
 ## Contributing
 
 Please feel welcome to open issues and submit pull requests.
+
+## Reference
+
+* [AngelCode BMFont Format](https://www.angelcode.com/products/bmfont/)
+* [FreeType](https://www.freetype.org/)
+
+### Font face terminology
+
+![Glyph metrics](graphics/glyph_metrics_small.png)
+![Glyph terms](graphics/glyph_terms_small.png)
