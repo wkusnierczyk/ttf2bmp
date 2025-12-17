@@ -5,138 +5,166 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/png"
+	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
-	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/bmp" // Support BMP decoding
 )
 
-type CharDef struct {
-	ID, X, Y, W, H, XOffset, YOffset, XAdvance int
-}
-
 func main() {
-	fntPath := flag.String("fnt", "", "Path to .fnt")
-
-	// CUSTOM USAGE TEXT
-	flag.Usage = func() {
-		_, err := fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", "verifier")
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
-		flag.PrintDefaults()
-	}
-
+	fntPath := flag.String("fnt", "", "Path to .fnt file")
 	flag.Parse()
 
 	if *fntPath == "" {
-		fmt.Println("Usage: go run tools/verifier/main.go -fnt <file.fnt>")
-		os.Exit(1)
+		log.Fatal("Please provide -fnt path")
 	}
 
-	bmpPath := strings.TrimSuffix(*fntPath, ".fnt") + ".bmp"
-	outPath := strings.TrimSuffix(*fntPath, ".fnt") + "_verify.png"
-
-	if err := runVerify(*fntPath, bmpPath, outPath); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("Created verification image:", outPath)
-}
-
-func runVerify(fnt, bmp, out string) (err error) {
-	chars, err := parseFNT(fnt)
+	// 1. Parse FNT
+	chars, imgFileName, err := parseFNT(*fntPath)
 	if err != nil {
-		return err
+		log.Fatalf("Failed to parse FNT: %v", err)
 	}
 
-	fImg, err := os.Open(bmp)
+	// 2. Load the Atlas Image
+	dir := filepath.Dir(*fntPath)
+	imgPath := filepath.Join(dir, imgFileName)
+
+	srcImg, err := loadImg(imgPath)
 	if err != nil {
-		return err
-	}
-	defer func() {
-		// For readers, strictly checking close error is less critical,
-		// but explicit ignore `_ =` satisfies linter if we don't want to propagate.
-		// Propagating is safer.
-		if cerr := fImg.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
-
-	srcImg, _, err := image.Decode(fImg)
-	if err != nil {
-		return err
+		log.Fatalf("Failed to load image %s: %v", imgPath, err)
 	}
 
-	// Create Output Canvas
-	dstImg := image.NewRGBA(image.Rect(0, 0, 1024, 2048))
-	cursorX, cursorY := 10, 50
-	rowH := 0
+	// 3. Create a canvas to draw on (Copy of source)
+	b := srcImg.Bounds()
+	dstImg := image.NewRGBA(b)
+	draw.Draw(dstImg, b, srcImg, image.Point{}, draw.Src)
 
+	// 4. Draw Red Boxes
+	red := color.RGBA{255, 0, 0, 255}
 	for _, c := range chars {
-		if cursorX+c.XAdvance > 1000 {
-			cursorX = 10
-			cursorY += rowH + 10
-			rowH = 0
-		}
-		if c.H > rowH {
-			rowH = c.H
-		}
-
-		draw.Draw(dstImg,
-			image.Rect(cursorX+c.XOffset, cursorY+c.YOffset, cursorX+c.XOffset+c.W, cursorY+c.YOffset+c.H),
-			srcImg,
-			image.Point{c.X, c.Y},
-			draw.Over,
-		)
-		cursorX += c.XAdvance
+		drawRect(dstImg, c.X, c.Y, c.W, c.H, red)
 	}
 
-	fOut, err := os.Create(out)
-	if err != nil {
-		return err
+	// 5. Save Result
+	outPath := filepath.Join(dir, "verification_result.png")
+	if err := saveImg(outPath, dstImg); err != nil {
+		log.Fatal(err)
 	}
-	defer func() {
-		if cerr := fOut.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
 
-	return png.Encode(fOut, dstImg)
+	fmt.Printf("Verification complete. Check %s\n", outPath)
 }
 
-func parseFNT(path string) (chars []CharDef, err error) {
+// Helper to load image with proper close handling
+func loadImg(path string) (image.Image, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
+		_ = f.Close() // Explicitly ignore error on read-only close
+	}()
+
+	srcImg, _, err := image.Decode(f)
+	return srcImg, err
+}
+
+// Helper to save image with proper close handling
+func saveImg(path string, img image.Image) (err error) {
+	outF, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cerr := outF.Close()
+		if err == nil { // Only report close error if write succeeded
 			err = cerr
 		}
 	}()
 
+	return png.Encode(outF, img)
+}
+
+// Simple helper to draw a hollow rectangle
+func drawRect(img *image.RGBA, x, y, w, h int, c color.RGBA) {
+	// Top & Bottom
+	for i := x; i < x+w; i++ {
+		img.Set(i, y, c)
+		img.Set(i, y+h-1, c)
+	}
+	// Left & Right
+	for j := y; j < y+h; j++ {
+		img.Set(x, j, c)
+		img.Set(x+w-1, j, c)
+	}
+}
+
+// --- FNT Parsing Logic ---
+
+type CharDef struct {
+	ID, X, Y, W, H int
+}
+
+func parseFNT(path string) (map[int]CharDef, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = f.Close() }()
+
+	chars := make(map[int]CharDef)
+	var imgFile string
+
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "char ") {
-			data := make(map[string]int)
-			for _, field := range strings.Fields(line) {
-				parts := strings.Split(field, "=")
-				if len(parts) == 2 {
-					val, _ := strconv.Atoi(parts[1])
-					data[parts[0]] = val
-				}
+
+		if strings.HasPrefix(line, "page") {
+			fields := parseLine(line)
+			if val, ok := fields["file"]; ok {
+				imgFile = val
 			}
-			chars = append(chars, CharDef{
-				ID: data["id"], X: data["x"], Y: data["y"], W: data["width"], H: data["height"],
-				XOffset: data["xoffset"], YOffset: data["yoffset"], XAdvance: data["xadvance"],
-			})
+		} else if strings.HasPrefix(line, "char ") {
+			d := parseLineInts(line)
+			id := d["id"]
+			chars[id] = CharDef{ID: id, X: d["x"], Y: d["y"], W: d["width"], H: d["height"]}
 		}
 	}
-	return chars, scanner.Err()
+
+	imgFile = strings.Trim(imgFile, "\"")
+	if imgFile == "" {
+		return nil, "", fmt.Errorf("no 'file' attribute found in page tag")
+	}
+
+	return chars, imgFile, scanner.Err()
+}
+
+func parseLine(line string) map[string]string {
+	m := make(map[string]string)
+	parts := strings.Split(line, " ")
+	for _, p := range parts {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) == 2 {
+			m[kv[0]] = kv[1]
+		}
+	}
+	return m
+}
+
+func parseLineInts(line string) map[string]int {
+	m := make(map[string]int)
+	parts := strings.Split(line, " ")
+	for _, p := range parts {
+		kv := strings.SplitN(p, "=", 2)
+		if len(kv) == 2 {
+			val, _ := strconv.Atoi(kv[1])
+			m[kv[0]] = val
+		}
+	}
+	return m
 }

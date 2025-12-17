@@ -132,28 +132,39 @@ lint:
 # Execution & Demo
 # ==============================================================================
 
+# Run the CLI using the default (PNG) to verify downstream compatibility
 run: build-cli fetch-test-data
-	@echo "  >  Running Conversion for $(TEST_FONT_NAME)..."
-	@mkdir -p $(ARTIFACTS_DIR)
-	./$(OUTPUT_DIR)/$(BINARY_NAME) \
-		-f "$(TEST_FONT_PATH)" \
+	@echo "  >  Running Conversion (Default PNG) for $(TEST_FONT_NAME)..."
+	@rm -rf output
+	@./$(OUTPUT_DIR)/$(BINARY_NAME) \
+		-f "test_data/$(TEST_FONT_NAME).ttf" \
 		-s "$(TEST_SIZE)" \
 		-c $(TEST_CHARS) \
-		-o $(ARTIFACTS_DIR)
+		-o output
 
 verify: build-verifier run
 	@echo "  >  Running Visual Verification..."
 	./$(TOOL_VERIFIER_BIN) \
 		-fnt "$(TEST_OUTPUT_FNT)"
 
-validate: build-validator run
-	@echo "  >  Running Regression Validation..."
-	./$(TOOL_VALIDATOR_BIN) \
-		-ttf "$(TEST_FONT_PATH)" \
-		-fnt "$(TEST_OUTPUT_FNT)" \
-		-size $(TEST_SIZE) \
+# Validate must use BMP to exercise the custom encoder
+validate: build-cli build-validator fetch-test-data
+	@echo "  >  Running Validation Pipeline (Force BMP)..."
+	@mkdir -p output_val
+	@./$(OUTPUT_DIR)/$(BINARY_NAME) \
+		-f "test_data/$(TEST_FONT_NAME).ttf" \
+		-s "$(TEST_SIZE)" \
+		-c $(TEST_CHARS) \
+		-t "bmp" \
+		-o output_val
+	@echo "  >  Verifying output..."
+	@./$(OUTPUT_DIR)/validator \
+		-ttf "test_data/$(TEST_FONT_NAME).ttf" \
+		-fnt "output_val/$(TEST_FONT_NAME)-$(TEST_SIZE).fnt" \
 		-chars $(TEST_CHARS) \
-		-out $(ARTIFACTS_DIR)
+		-size $(TEST_SIZE) \
+		-out output_val
+
 
 # ==============================================================================
 # Cleanup
