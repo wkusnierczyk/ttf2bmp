@@ -7,33 +7,38 @@ import (
 )
 
 func TestGenerate(t *testing.T) {
-	// 1. Setup paths
-	// We look for the font in the project root's test_data folder
+	// 1. Setup Paths
+	// We assume the test runs from within the 'converter' directory,
+	// so the test_data is one level up.
 	wd, _ := os.Getwd()
-	projectRoot := filepath.Dir(wd)
-	fontPath := filepath.Join(projectRoot, "test_data", "Go-Regular.ttf")
+	rootDir := filepath.Dir(wd)
+	fontPath := filepath.Join(rootDir, "test_data", "Go-Regular.ttf")
 
-	// If the test font isn't there (e.g. running 'go test' before 'make fetch-test-data'),
-	// we skip rather than fail.
+	// Verify font exists before running (skip if missing)
 	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
 		t.Skipf("Test font not found at %s. Run 'make fetch-test-data' first.", fontPath)
 	}
 
-	outDir := t.TempDir()
-	prefix := filepath.Join(outDir, "test-output")
+	// Create a temporary output directory
+	tempDir := t.TempDir()
+	outPrefix := filepath.Join(tempDir, "test_output")
 
-	// 2. Call Generate (Updated signature)
-	// We test "png" since that is the default functionality we restored.
-	err := Generate(fontPath, 32, "A", prefix, "png")
+	// 2. Execution
+	// FIX: Added '2' as the last argument for padding
+	err := Generate(fontPath, 32, "ABC", outPrefix, "png", 2)
+
+	// 3. Assertions
 	if err != nil {
-		t.Fatalf("Generate failed: %v", err)
+		t.Fatalf("Generate() failed: %v", err)
 	}
 
-	// 3. Verify output files exist
-	if _, err := os.Stat(prefix + ".png"); os.IsNotExist(err) {
-		t.Error("Expected .png file to be created")
+	// Check if .png was created
+	if _, err := os.Stat(outPrefix + ".png"); os.IsNotExist(err) {
+		t.Errorf("Expected %s.png to exist", outPrefix)
 	}
-	if _, err := os.Stat(prefix + ".fnt"); os.IsNotExist(err) {
-		t.Error("Expected .fnt file to be created")
+
+	// Check if .fnt was created
+	if _, err := os.Stat(outPrefix + ".fnt"); os.IsNotExist(err) {
+		t.Errorf("Expected %s.fnt to exist", outPrefix)
 	}
 }

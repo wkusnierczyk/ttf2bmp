@@ -21,7 +21,8 @@ type Config struct {
 	Sizes       []int
 	Chars       string
 	OutputDir   string
-	Format      string // New field
+	Format      string
+	Padding     int // New field
 }
 
 // Global UI buffer
@@ -29,6 +30,7 @@ var logBuffer []string
 
 func main() {
 	var fontsFlag, sizesFlag, charsFlag, outDir, typeFlag string
+	var paddingFlag int
 	var showVersion bool
 
 	flag.Usage = func() {
@@ -44,9 +46,12 @@ func main() {
 	flag.StringVar(&charsFlag, "c", "", "Short for --chars")
 	flag.StringVar(&outDir, "out", ".", "Output dir")
 	flag.StringVar(&outDir, "o", ".", "Short for --out")
-	// NEW FLAG
 	flag.StringVar(&typeFlag, "type", "png", "Output type: 'png' or 'bmp'")
 	flag.StringVar(&typeFlag, "t", "png", "Short for --type")
+	// NEW FLAGS
+	flag.IntVar(&paddingFlag, "padding", 2, "Padding between characters (pixels)")
+	flag.IntVar(&paddingFlag, "p", 2, "Short for --padding")
+
 	flag.BoolVar(&showVersion, "version", false, "Print version")
 
 	flag.Parse()
@@ -56,7 +61,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfg, err := validateInputs(fontsFlag, sizesFlag, charsFlag, outDir, typeFlag)
+	cfg, err := validateInputs(fontsFlag, sizesFlag, charsFlag, outDir, typeFlag, paddingFlag)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		flag.Usage()
@@ -109,11 +114,12 @@ func processBatch(files []string, cfg Config) {
 			currentJob++
 			outPrefix := filepath.Join(cfg.OutputDir, fmt.Sprintf("%s-%d", nameNoExt, size))
 
-			msg := fmt.Sprintf("Processing %s @ %dpx (%s)...", baseName, size, cfg.Format)
+			// Include padding in the log message for clarity
+			msg := fmt.Sprintf("Processing %s @ %dpx (pad:%d) ...", baseName, size, cfg.Padding)
 			updateUI(currentJob, totalJobs, msg)
 
-			// Pass cfg.Format to Generate
-			err := converter.Generate(fontPath, size, cfg.Chars, outPrefix, cfg.Format)
+			// Pass cfg.Padding to Generate
+			err := converter.Generate(fontPath, size, cfg.Chars, outPrefix, cfg.Format, cfg.Padding)
 
 			if err != nil {
 				errMsg := fmt.Sprintf("FAIL %s @ %dpx: %v", baseName, size, err)
@@ -138,9 +144,7 @@ func processBatch(files []string, cfg Config) {
 	}
 }
 
-// ... updateUI function remains unchanged ...
-
-func validateInputs(f, s, c, o, t string) (Config, error) {
+func validateInputs(f, s, c, o, t string, p int) (Config, error) {
 	if f == "" || s == "" || c == "" {
 		return Config{}, fmt.Errorf("missing arguments")
 	}
@@ -150,9 +154,13 @@ func validateInputs(f, s, c, o, t string) (Config, error) {
 		return Config{}, fmt.Errorf("invalid type: %s (must be 'png' or 'bmp')", t)
 	}
 
+	if p < 0 {
+		return Config{}, fmt.Errorf("padding cannot be negative")
+	}
+
 	var sizeInts []int
-	for _, p := range strings.Split(s, ",") {
-		val, err := strconv.Atoi(strings.TrimSpace(p))
+	for _, pStr := range strings.Split(s, ",") {
+		val, err := strconv.Atoi(strings.TrimSpace(pStr))
 		if err != nil {
 			return Config{}, err
 		}
@@ -165,11 +173,11 @@ func validateInputs(f, s, c, o, t string) (Config, error) {
 		Sizes:       sizeInts,
 		Chars:       c,
 		OutputDir:   o,
-		Format:      t, // Set format
+		Format:      t,
+		Padding:     p, // Set padding
 	}, nil
 }
 
-// ... updateUI ...
 func updateUI(current, total int, msg string) {
 	logBuffer = append(logBuffer[1:], msg)
 	percent := 0
