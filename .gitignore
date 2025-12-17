@@ -1,6 +1,6 @@
 # Binaries and Build Output
 /bin/
-/output/
+/test_output/
 
 # Test Data (Downloaded by Makefile)
 /test_data/
