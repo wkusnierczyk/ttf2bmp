@@ -1,99 +1,214 @@
+# ==============================================================================
 # Variables
+# ==============================================================================
 BINARY_NAME=ttf2bmp
-CMD_PATH=./cmd/ttf2bmp
 OUTPUT_DIR=bin
+ARTIFACTS_DIR=output
+TEST_DATA_DIR=test_data
 
-# Go related variables
-GOBASE=$(shell pwd)
+# Tools Source
+TOOL_VERIFIER_SRC=./tools/verifier/main.go
+TOOL_VALIDATOR_SRC=./tools/validator/main.go
+
+# Local Build Binaries (Host OS)
+TOOL_VERIFIER_BIN=$(OUTPUT_DIR)/verifier
+TOOL_VALIDATOR_BIN=$(OUTPUT_DIR)/validator
+
+# ------------------------------------------------------------------------------
+# Test Configuration (Override these at runtime!)
+# Example: make run TEST_FONT_NAME=MyFont TEST_SIZE=48
+# ------------------------------------------------------------------------------
+TEST_FONT_NAME ?= Go-Regular
+TEST_FONT_URL  ?= https://raw.githubusercontent.com/golang/image/master/font/gofont/ttfs/Go-Regular.ttf
+TEST_CHARS     ?= "Abdfghjlpqty123"
+TEST_SIZE      ?= 32
+
+# Derived Paths
+TEST_FONT_PATH  ?= $(TEST_DATA_DIR)/$(TEST_FONT_NAME).ttf
+TEST_OUTPUT_FNT  = $(ARTIFACTS_DIR)/$(TEST_FONT_NAME)-$(TEST_SIZE).fnt
+
+# Go Commands
 GOCMD=go
 GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
+GOVET=$(GOCMD) vet
+GOFMT=$(GOCMD) fmt
+GOLINT=golangci-lint
 
-# .PHONY ensures these targets are treated as commands, not files
-.PHONY: all build clean test run deps build-linux build-windows build-mac build-all help
+# ==============================================================================
+# Main Targets
+# ==============================================================================
 
-all: check test build
+.PHONY: all build clean test bench deps vet lint format run help verify validate fetch-test-data \
+        build-cli build-verifier build-validator build-lib build-tools \
+        build-linux build-windows build-mac build-all
 
-# Install dependencies
+# Default target: Dependencies -> Code Quality -> Tests -> Build
+all: deps check test build
+
 deps:
+	@echo "  >  Downloading dependencies..."
 	$(GOMOD) download
 	$(GOMOD) tidy
 
-# Build the binary for the local architecture
-build:
-	@echo "  >  Building binary..."
-	@mkdir -p $(OUTPUT_DIR)
-	$(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME) $(CMD_PATH)
-	@echo "  >  Done! Binary located at $(OUTPUT_DIR)/$(BINARY_NAME)"
+# ==============================================================================
+# Build Targets (Local Host)
+# ==============================================================================
 
-# Run unit tests
+# Master build target: builds everything for the current OS
+build: build-lib build-cli build-tools
+
+# 1. Build the Main CLI
+build-cli:
+	@echo "  >  Building CLI ($(BINARY_NAME))..."
+	@mkdir -p $(OUTPUT_DIR)
+	$(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME) ./main.go
+
+# 2. Build the Library (Compilation Check)
+build-lib:
+	@echo "  >  Verifying Library compilation..."
+	$(GOBUILD) ./converter/...
+
+# 3. Build Helper Tools Wrapper
+build-tools: build-verifier build-validator
+
+build-verifier:
+	@echo "  >  Building Verifier Tool..."
+	@mkdir -p $(OUTPUT_DIR)
+	$(GOBUILD) -o $(TOOL_VERIFIER_BIN) $(TOOL_VERIFIER_SRC)
+
+build-validator:
+	@echo "  >  Building Validator Tool..."
+	@mkdir -p $(OUTPUT_DIR)
+	$(GOBUILD) -o $(TOOL_VALIDATOR_BIN) $(TOOL_VALIDATOR_SRC)
+
+# ==============================================================================
+# Test Data
+# ==============================================================================
+
+# Fetch test data if it doesn't exist locally
+fetch-test-data:
+	@if [ ! -f "$(TEST_FONT_PATH)" ]; then \
+		echo "  >  Downloading test font ($(TEST_FONT_NAME))..."; \
+		mkdir -p $(TEST_DATA_DIR); \
+		curl -L -f -S -o "$(TEST_FONT_PATH)" "$(TEST_FONT_URL)"; \
+	else \
+		echo "  >  Using existing font at $(TEST_FONT_PATH)"; \
+	fi
+
+# ==============================================================================
+# Testing & Benchmarking
+# ==============================================================================
+
 test:
 	@echo "  >  Running tests..."
-	$(GOTEST) -v .
+	$(GOTEST) -v ./converter/...
 
-# Run benchamrks
 bench:
 	@echo "  >  Running benchmarks..."
-	$(GOTEST) -bench=. .
+	$(GOTEST) -bench=. ./converter/...
 
-# Formats code and checks for common errors
-check:
+# ==============================================================================
+# Code Quality
+# ==============================================================================
+
+check: vet lint
+
+format:
 	@echo "  >  Formatting code..."
-	$(GOCMD) fmt . ./cmd/ttf2bmp
+	$(GOFMT) ./...
+
+vet:
 	@echo "  >  Vetting code..."
-	$(GOCMD) vet .  ./cmd/ttf2bmp
+	$(GOVET) ./...
 
-# Run linter
 lint:
-	@echo "Running Linter..."
-	# Checks code style, logic errors, and complexity
-	# Requires: https://golangci-lint.run/usage/install/
-	golangci-lint run
+	@echo "  >  Running Linter..."
+	$(GOLINT) run ./...
 
-# Run the tool (example usage)
-run: build
-	@echo "  >  Running $(BINARY_NAME)..."
-	./$(OUTPUT_DIR)/$(BINARY_NAME) -help
+# ==============================================================================
+# Execution & Demo
+# ==============================================================================
 
-# Clean build artifacts
+run: build-cli fetch-test-data
+	@echo "  >  Running Conversion for $(TEST_FONT_NAME)..."
+	@mkdir -p $(ARTIFACTS_DIR)
+	./$(OUTPUT_DIR)/$(BINARY_NAME) \
+		-f "$(TEST_FONT_PATH)" \
+		-s "$(TEST_SIZE)" \
+		-c $(TEST_CHARS) \
+		-o $(ARTIFACTS_DIR)
+
+verify: build-verifier run
+	@echo "  >  Running Visual Verification..."
+	./$(TOOL_VERIFIER_BIN) \
+		-fnt "$(TEST_OUTPUT_FNT)"
+
+validate: build-validator run
+	@echo "  >  Running Regression Validation..."
+	./$(TOOL_VALIDATOR_BIN) \
+		-ttf "$(TEST_FONT_PATH)" \
+		-fnt "$(TEST_OUTPUT_FNT)" \
+		-size $(TEST_SIZE) \
+		-chars $(TEST_CHARS) \
+		-out $(ARTIFACTS_DIR)
+
+# ==============================================================================
+# Cleanup
+# ==============================================================================
+
 clean:
-	@echo "  >  Cleaning build cache and binaries..."
+	@echo "  >  Cleaning build cache, artifacts, and test data..."
 	$(GOCLEAN)
 	rm -rf $(OUTPUT_DIR)
-	rm -f *.png *.fnt
+	rm -rf $(ARTIFACTS_DIR)
+	rm -rf $(TEST_DATA_DIR)
+	rm -f *.png *.fnt *.bmp
 
-help:
-	@echo "Make options:"
-	@echo "  make          - Run tests and build local binary"
-	@echo "  make deps     - Download dependencies (go mod tidy)"
-	@echo "  make build    - Build binary to ./bin"
-	@echo "  make test     - Run unit tests and benchmarks"
-	@echo "  make clean    - Remove binary and output files"
-	@echo "  make build-linux   - Cross-compile for Linux"
-	@echo "  make build-mac - Cross-compile for MacOS"
-	@echo "  make build-windows - Cross-compile for Windows"
+# ==============================================================================
+# Cross Compilation (Builds CLI + Tools for every platform)
+# ==============================================================================
 
-
-# --- Cross Compilation Targets ---
-
-# Build for Linux (AMD64)
 build-linux:
-	@echo "  >  Building for Linux..."
-	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-linux $(CMD_PATH)
+	@echo "  >  Building for Linux (AMD64)..."
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-linux ./main.go
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/verifier-linux $(TOOL_VERIFIER_SRC)
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/validator-linux $(TOOL_VALIDATOR_SRC)
 
-# Build for Windows (AMD64)
 build-windows:
-	@echo "  >  Building for Windows..."
-	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-windows.exe $(CMD_PATH)
+	@echo "  >  Building for Windows (AMD64)..."
+	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-windows.exe ./main.go
+	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/verifier-windows.exe $(TOOL_VERIFIER_SRC)
+	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/validator-windows.exe $(TOOL_VALIDATOR_SRC)
 
-# Build for MacOS (Apple Silicon & Intel)
 build-mac:
 	@echo "  >  Building for MacOS (Intel)..."
-	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-amd64 $(CMD_PATH)
-	@echo "  >  Building for MacOS (M1/M2)..."
-	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-arm64 $(CMD_PATH)
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-amd64 ./main.go
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/verifier-darwin-amd64 $(TOOL_VERIFIER_SRC)
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(OUTPUT_DIR)/validator-darwin-amd64 $(TOOL_VALIDATOR_SRC)
+	@echo "  >  Building for MacOS (Apple Silicon)..."
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/$(BINARY_NAME)-darwin-arm64 ./main.go
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/verifier-darwin-arm64 $(TOOL_VERIFIER_SRC)
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(OUTPUT_DIR)/validator-darwin-arm64 $(TOOL_VALIDATOR_SRC)
 
 build-all: build-linux build-mac build-windows
+
+help:
+	@echo "Usage: make [target] [VARIABLES]"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all          - Deps, check, test, build (everything)"
+	@echo "  build        - Build CLI, Lib check, and Tools (Host OS)"
+	@echo "  build-all    - Cross-compile everything for Linux, Win, Mac"
+	@echo "  run          - Run conversion (defaults to RobotoSlab)"
+	@echo "  verify       - Run conversion + visual check"
+	@echo "  validate     - Run conversion + math validation"
+	@echo "  test         - Run unit tests"
+	@echo "  clean        - Remove all binaries and outputs"
+	@echo ""
+	@echo "Variables (Override with make <target> VAR=VAL):"
+	@echo "  TEST_FONT_NAME  (Default: RobotoSlab-Regular)"
+	@echo "  TEST_SIZE       (Default: 32)"
+	@echo "  TEST_CHARS      (Default: \"Abdfghjlpqty123\")"

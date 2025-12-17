@@ -1,0 +1,35 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  quality:
+    name: Lint & Unit Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      # Install golangci-lint so 'make lint' can run
+      - name: Install Linter
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+      - name: Download Modules
+        run: make deps
+
+      - name: Run Static Analysis (Vet + Lint)
+        run: make check
+
+      - name: Run Unit Tests
+        run: make test
+      - name: Run Benchmarks
+        run: make bench
