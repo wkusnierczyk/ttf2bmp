@@ -1,7 +1,7 @@
 # ttf2bmp
 
-[![Code Quality](https://github.com/yourusername/ttf2bmp/actions/workflows/test_code_quality.yml/badge.svg)](https://github.com/yourusername/ttf2bmp/actions/workflows/test_code_quality.yml)
-[![Functional Verification](https://github.com/yourusername/ttf2bmp/actions/workflows/test_functional_integration.yml/badge.svg)](https://github.com/yourusername/ttf2bmp/actions/workflows/test_functional_integration.yml)
+[![Code Quality](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_code_quality.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_code_quality.yml)
+[![Functional Verification](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_functional_integration.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/test_functional_integration.yml)
 
 **ttf2bmp** is a robust command-line tool written in Go that converts TrueType Fonts (TTF) into AngelCode BMFont format (BMP image + FNT descriptor). It is designed for high-volume batch processing, featuring a rolling progress dashboard, parallel-ready architecture, and automated regression testing.
 
@@ -20,7 +20,7 @@
 
 ### Build from Source
 ```bash
-git clone [https://github.com/yourusername/ttf2bmp.git](https://github.com/yourusername/ttf2bmp.git)
+git clone [https://github.com/wkusnierczyk/ttf2bmp.git](https://github.com/wkusnierczyk/ttf2bmp.git)
 cd ttf2bmp
 make build
 ```
