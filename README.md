@@ -3,6 +3,8 @@
 [![Code Quality](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/quality.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/quality.yml)
 [![Functional Verification](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/integration.yml/badge.svg)](https://github.com/wkusnierczyk/ttf2bmp/actions/workflows/integration.yml)
 
+![Logo](graphics/ttf2bmp.png)
+
 **ttf2bmp** is a robust, efficient command-line tool written in Go that converts TrueType Fonts (TTF) into AngelCode
 BMFont format (BMP image + FNT descriptor).
 It is designed for high-volume batch processing, featuring a rolling progress dashboard, parallel-ready architecture,
