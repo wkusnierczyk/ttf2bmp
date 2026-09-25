@@ -2,7 +2,9 @@ package converter
 
 import (
 	"bufio"
+	"fmt"
 	"image/png"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -151,10 +153,92 @@ func TestStrokeStaysInsideTheGlyph(t *testing.T) {
 }
 
 func TestWideStrokeIsFilled(t *testing.T) {
-	filled, hollow, _, _ := generatePair(t, 100)
+	// No point of these 48px glyphs is 5px inside its edge, so a 5px band is the whole
+	// glyph. Small enough that the distance transform decides it, unlike a stroke wider
+	// than the atlas.
+	filled, hollow, _, _ := generatePair(t, 5)
 	for i := range filled {
 		if filled[i] != hollow[i] {
 			t.Fatalf("pixel %d: a stroke wider than any stem should change nothing, got %d, want %d", i, hollow[i], filled[i])
+		}
+	}
+}
+
+// stemRow renders one glyph at 100px and returns the alpha of the row halfway down
+// its ink, filled and hollow.
+func stemRow(t *testing.T, char string, hinting string, stroke float64) (filled, hollow []uint8) {
+	t.Helper()
+	wd, _ := os.Getwd()
+	fontPath := filepath.Join(filepath.Dir(wd), "test_data", "Go-Regular.ttf")
+	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
+		t.Skipf("Test font not found at %s. Run 'make fetch-test-data' first.", fontPath)
+	}
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "filled"), filepath.Join(dir, "hollow")
+	if err := Generate(fontPath, 100, char, a, "png", 2, hinting, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := Generate(fontPath, 100, char, b, "png", 2, hinting, stroke); err != nil {
+		t.Fatal(err)
+	}
+	fa, fb := alpha(t, a+".png"), alpha(t, b+".png")
+	var lineHeight int
+	if _, err := fmt.Sscanf(lines(t, a+".fnt")[1], "common lineHeight=%d", &lineHeight); err != nil {
+		t.Fatal(err)
+	}
+	width := len(fa) / lineHeight
+	top, bottom := -1, -1
+	for y := 0; y < len(fa)/width; y++ {
+		for x := 0; x < width; x++ {
+			if fa[y*width+x] > 0 {
+				if top < 0 {
+					top = y
+				}
+				bottom = y
+				break
+			}
+		}
+	}
+	y := (top + bottom) / 2
+	return fa[y*width : (y+1)*width], fb[y*width : (y+1)*width]
+}
+
+// The band is measured across the stem of an I: each side should hold W pixels of
+// ink, the two sides should agree, and the middle of the stem should be empty. Totals
+// over the whole atlas cannot see a band that is shifted or the wrong width; this can.
+func TestStrokeWidthOnAStem(t *testing.T) {
+	for _, hinting := range []string{"none", "full"} {
+		for _, w := range []float64{1, 1.5, 2.25} {
+			filled, hollow := stemRow(t, "I", hinting, w)
+			left, right := -1, -1
+			for x, a := range filled {
+				if a > 0 {
+					if left < 0 {
+						left = x
+					}
+					right = x
+				}
+			}
+			mid := (left + right) / 2
+			var inkLeft, inkRight float64
+			for x := left; x <= right; x++ {
+				ink := float64(hollow[x]) / 255
+				if x <= mid {
+					inkLeft += ink
+				} else {
+					inkRight += ink
+				}
+			}
+			// Measured: 0.03 to 0.05px over W on each side, from where the rasterizer's
+			// antialiased outer edge falls. Tight enough to catch the inner edge moving by
+			// half a supersample (1/16px), which lands 0.08px under W.
+			const tolerance = 0.07
+			if math.Abs(inkLeft-w) > tolerance || math.Abs(inkRight-w) > tolerance {
+				t.Errorf("hinting %s, stroke %v: ink per side %.3f and %.3f, want %v each", hinting, w, inkLeft, inkRight, w)
+			}
+			if hollow[mid] != 0 {
+				t.Errorf("hinting %s, stroke %v: the middle of a %dpx stem should be empty, alpha %d", hinting, w, right-left+1, hollow[mid])
+			}
 		}
 	}
 }

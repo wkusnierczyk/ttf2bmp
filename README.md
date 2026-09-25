@@ -101,11 +101,9 @@ interior, so the glyph is drawn as an outline:
 * **Hollow fonts get their own file names**, with a suffix (a `.` in the width is written as `p`), so they can share
   a directory with the filled fonts: `Face-68.fnt`, `Face-68-stroke1.fnt`, `Face-68-stroke1p25.fnt`.
 * **Without `--stroke`, output is unchanged**, byte for byte.
-* **`--hinting none` is recommended with a stroke.** The interior is measured on the 8x render, which hinting fits to a
-  much finer grid than the 1x glyph, so with full hinting the inner edge can sit slightly unevenly against the outer.
 
 ```bash
-./bin/ttf2bmp -f "assets/fonts/Face.ttf" -s "54,68" -c "0123456789:" --hinting none --stroke 1.25 -o output/
+./bin/ttf2bmp -f "assets/fonts/Face.ttf" -s "54,68" -c "0123456789:" --stroke 1.25 -o output/
 ```
 
 ## Project structure

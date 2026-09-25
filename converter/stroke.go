@@ -24,6 +24,9 @@ const strokeSupersample = 8
 // stroke pixels inside the glyph, measured on a supersampled render and box-filtered
 // back down. So the outer edge is the rasterizer's own antialiasing, the inner edge
 // is antialiased too, and stroke may be fractional.
+//
+// One glyph at a time, each on a supersampled canvas just large enough for its ink,
+// so memory follows the largest glyph rather than the whole atlas.
 func hollow(img *image.RGBA, f *opentype.Font, size int, h font.Hinting, chars string, positions map[rune]int, ascent int, stroke float64) error {
 	s := strokeSupersample
 	face, err := opentype.NewFace(f, &opentype.FaceOptions{
@@ -36,61 +39,87 @@ func hollow(img *image.RGBA, f *opentype.Font, size int, h font.Hinting, chars s
 	}
 	defer func() { _ = face.Close() }()
 
-	b := img.Bounds()
-	w, ht := b.Dx()*s, b.Dy()*s
-	big := image.NewAlpha(image.Rect(0, 0, w, ht))
-	drawer := &font.Drawer{Dst: big, Src: image.White, Face: face}
-
-	// The same origins as the filled atlas, scaled: each glyph is the same outline at
-	// s times the size, so it lands on the same place in the downsampled grid.
-	for _, char := range chars {
-		x, ok := positions[char]
-		if !ok {
-			continue
-		}
-		drawer.Dot = fixed.P(x*s, ascent*s)
-		drawer.DrawString(string(char))
-	}
-
-	inside := make([]bool, w*ht)
-	for i, a := range big.Pix {
-		inside[i] = a >= 128
-	}
-	dist := insideDistance(inside, w, ht)
-
 	// dist is measured between pixel centres, so a pixel touching the edge is 1 away.
 	// Half a pixel of that is the pixel itself, not the band.
 	limit := stroke*float64(s) + 0.5
 	limitSq := limit * limit
 
-	for y := 0; y < b.Dy(); y++ {
-		for x := 0; x < b.Dx(); x++ {
-			interior := 0
-			for sy := 0; sy < s; sy++ {
-				row := (y*s + sy) * w
-				for sx := 0; sx < s; sx++ {
-					if dist[row+x*s+sx] >= limitSq {
-						interior++
+	done := make(map[rune]bool)
+	for _, char := range chars {
+		x, ok := positions[char]
+		if !ok || done[char] {
+			continue
+		}
+		done[char] = true
+		ink, _, ok := face.GlyphBounds(char)
+		if !ok {
+			continue
+		}
+
+		// The glyph's ink in atlas pixels, from the same origin as the filled atlas at s
+		// times the size, widened by a pixel so the canvas has outside all round, and
+		// clipped to the atlas so a glyph cut by the atlas edge is measured from that
+		// edge, as the filled atlas cuts it.
+		cell := image.Rect(
+			floorDiv(x*s+ink.Min.X.Floor(), s)-1,
+			floorDiv(ascent*s+ink.Min.Y.Floor(), s)-1,
+			floorDiv(x*s+ink.Max.X.Ceil()+s-1, s)+1,
+			floorDiv(ascent*s+ink.Max.Y.Ceil()+s-1, s)+1,
+		).Intersect(img.Bounds())
+		if cell.Empty() {
+			continue
+		}
+
+		w, ht := cell.Dx()*s, cell.Dy()*s
+		canvas := image.NewAlpha(image.Rect(0, 0, w, ht))
+		drawer := &font.Drawer{Dst: canvas, Src: image.White, Face: face}
+		drawer.Dot = fixed.P((x-cell.Min.X)*s, (ascent-cell.Min.Y)*s)
+		drawer.DrawString(string(char))
+
+		inside := make([]bool, w*ht)
+		for i, a := range canvas.Pix {
+			inside[i] = a >= 128
+		}
+		dist := insideDistance(inside, w, ht)
+
+		for cy := 0; cy < cell.Dy(); cy++ {
+			for cx := 0; cx < cell.Dx(); cx++ {
+				interior := 0
+				for sy := 0; sy < s; sy++ {
+					row := (cy*s + sy) * w
+					for sx := 0; sx < s; sx++ {
+						if dist[row+cx*s+sx] >= limitSq {
+							interior++
+						}
 					}
 				}
+				if interior == 0 {
+					continue
+				}
+				// Coverage of the interior, on the 0-255 scale of the alpha it is taken from.
+				cut := (interior*255 + s*s/2) / (s * s)
+				i := img.PixOffset(cell.Min.X+cx, cell.Min.Y+cy)
+				keep := int(img.Pix[i+3]) - cut
+				if keep < 0 {
+					keep = 0
+				}
+				// Generate draws white, so the colour channels are the premultiplied alpha.
+				v := uint8(keep)
+				img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = v, v, v, v
 			}
-			if interior == 0 {
-				continue
-			}
-			// Coverage of the interior, on the 0-255 scale of the alpha it is taken from.
-			cut := (interior*255 + s*s/2) / (s * s)
-			i := img.PixOffset(b.Min.X+x, b.Min.Y+y)
-			a := int(img.Pix[i+3])
-			keep := a - cut
-			if keep < 0 {
-				keep = 0
-			}
-			// Generate draws white, so the colour channels are the premultiplied alpha.
-			v := uint8(keep)
-			img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = v, v, v, v
 		}
 	}
 	return nil
+}
+
+// floorDiv is integer division rounding towards negative infinity, for glyph ink that
+// reaches left of or above the atlas origin.
+func floorDiv(a, b int) int {
+	q := a / b
+	if a%b != 0 && (a < 0) != (b < 0) {
+		q--
+	}
+	return q
 }
 
 // insideDistance returns, for every pixel of a w x h mask, the squared Euclidean
