@@ -78,7 +78,7 @@ Instead, use the `--fonts` flag to provide a file path or a glob pattern to sele
 | `--sizes` | `-s`  | Comma-separated list of sizes   | Yes               | `"16, 24, 32"`   |
 | `--chars` | `-c`  | String of characters to include | Yes               | `"ABCabc123"`    |
 | `--out`   | `-o`  | Output directory                | No (Default: `.`) | `build/fonts`    |
-| `--stroke` | `-w` | Outline width in pixels; `0` draws filled glyphs | No (Default: `0`) | `1.25` |
+| `--stroke` | `-w` | Outline width in pixels, at least `0.125`; `0` draws filled glyphs | No (Default: `0`) | `1.25` |
 
 ### Example
 
@@ -97,7 +97,8 @@ interior, so the glyph is drawn as an outline:
   `.fnt` are the same as for the filled font, so a hollow font can replace the filled one at the same size.
 * **`W` can be fractional.** The outer edge is the rasteriser's own antialiasing, and the inner edge is antialiased
   too: the interior is measured on an 8x supersampled render and filtered back down. So a stroke can be scaled with
-  the font size or the screen resolution without rounding to whole pixels.
+  the font size or the screen resolution without rounding to whole pixels. The smallest width is `0.125`, one
+  supersample: anything narrower would round to no band and erase the glyph, so it is refused.
 * **Hollow fonts get their own file names**, with a suffix (a `.` in the width is written as `p`), so they can share
   a directory with the filled fonts: `Face-68.fnt`, `Face-68-stroke1.fnt`, `Face-68-stroke1p25.fnt`.
 * **Without `--stroke`, output is unchanged**, byte for byte.

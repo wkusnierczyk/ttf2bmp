@@ -15,6 +15,17 @@ import (
 // same order as the antialiasing on the outer edge.
 const strokeSupersample = 8
 
+// MinStroke is the narrowest outline hollow can draw: one supersample. The band is
+// measured in whole supersamples, so a narrower width would round to no band at all
+// and erase the glyph rather than thin it.
+const MinStroke = 1.0 / strokeSupersample
+
+// placement is one glyph drawn into the atlas: which, and at what x.
+type placement struct {
+	char rune
+	x    int
+}
+
 // hollow removes the interior of every glyph in img, keeping only the band within
 // stroke pixels of the glyph edge. The band lies inside the glyph, so the atlas
 // layout, the glyph bounds and every metric stay exactly as they are.
@@ -27,7 +38,7 @@ const strokeSupersample = 8
 //
 // One glyph at a time, each on a supersampled canvas just large enough for its ink,
 // so memory follows the largest glyph rather than the whole atlas.
-func hollow(img *image.RGBA, f *opentype.Font, size int, h font.Hinting, chars string, positions map[rune]int, ascent int, stroke float64) error {
+func hollow(img *image.RGBA, f *opentype.Font, size int, h font.Hinting, placed []placement, ascent int, stroke float64) error {
 	s := strokeSupersample
 	face, err := opentype.NewFace(f, &opentype.FaceOptions{
 		Size:    float64(size * s),
@@ -44,13 +55,10 @@ func hollow(img *image.RGBA, f *opentype.Font, size int, h font.Hinting, chars s
 	limit := stroke*float64(s) + 0.5
 	limitSq := limit * limit
 
-	done := make(map[rune]bool)
-	for _, char := range chars {
-		x, ok := positions[char]
-		if !ok || done[char] {
-			continue
-		}
-		done[char] = true
+	// Every glyph in the atlas, a character given twice included: the fnt points at the
+	// last copy, but the earlier one is in the image too and is hollowed the same way.
+	for _, p := range placed {
+		char, x := p.char, p.x
 		ink, _, ok := face.GlyphBounds(char)
 		if !ok {
 			continue

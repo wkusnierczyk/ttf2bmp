@@ -261,3 +261,101 @@ func TestStrokeGrowsWithWidth(t *testing.T) {
 		prev = s
 	}
 }
+
+// fontOrSkip returns the test font's path, or skips the test when it is missing.
+func fontOrSkip(t *testing.T) string {
+	t.Helper()
+	wd, _ := os.Getwd()
+	fontPath := filepath.Join(filepath.Dir(wd), "test_data", "Go-Regular.ttf")
+	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
+		t.Skipf("Test font not found at %s. Run 'make fetch-test-data' first.", fontPath)
+	}
+	return fontPath
+}
+
+// cells renders chars and returns the atlas alpha split into one slice of rows per
+// fnt char line, in the order the fnt lists them.
+func cells(t *testing.T, chars string, padding int, stroke float64) [][]uint8 {
+	t.Helper()
+	out := filepath.Join(t.TempDir(), "atlas")
+	if err := Generate(fontOrSkip(t), 100, chars, out, "png", padding, "none", stroke); err != nil {
+		t.Fatal(err)
+	}
+	a := alpha(t, out+".png")
+	fnt := lines(t, out+".fnt")
+	var lineHeight, scaleW int
+	if _, err := fmt.Sscanf(fnt[1], "common lineHeight=%d base=%d scaleW=%d", &lineHeight, new(int), &scaleW); err != nil {
+		t.Fatal(err)
+	}
+	var result [][]uint8
+	for _, l := range fnt[4:] {
+		var id, x, width int
+		if _, err := fmt.Sscanf(l, "char id=%d x=%d y=0 width=%d", &id, &x, &width); err != nil {
+			t.Fatal(err)
+		}
+		var cell []uint8
+		for y := 0; y < lineHeight; y++ {
+			cell = append(cell, a[y*scaleW+x:y*scaleW+x+width]...)
+		}
+		result = append(result, cell)
+	}
+	return result
+}
+
+func TestMinStrokeKeepsTheGlyph(t *testing.T) {
+	filled, hollow := stemRow(t, "I", "none", MinStroke)
+	var ink, full float64
+	for x := range filled {
+		ink += float64(hollow[x]) / 255
+		full += float64(filled[x]) / 255
+	}
+	if ink == 0 || ink >= full {
+		t.Errorf("the narrowest stroke should keep a thin band: %.3f of %.3f", ink, full)
+	}
+	err := Generate(fontOrSkip(t), 32, "A", filepath.Join(t.TempDir(), "x"), "png", 2, "none", MinStroke/2)
+	if err == nil {
+		t.Error("a stroke below MinStroke would erase the glyph; Generate should refuse it")
+	}
+}
+
+// A character given twice is drawn twice; the fnt points at the second copy, but
+// both are in the image and both must be hollow.
+func TestDuplicateCharsAreAllHollow(t *testing.T) {
+	filled := filepath.Join(t.TempDir(), "filled")
+	if err := Generate(fontOrSkip(t), 100, "II", filled, "png", 2, "none", 0); err != nil {
+		t.Fatal(err)
+	}
+	hollow := filepath.Join(t.TempDir(), "hollow")
+	if err := Generate(fontOrSkip(t), 100, "II", hollow, "png", 2, "none", 1.5); err != nil {
+		t.Fatal(err)
+	}
+	f, h := alpha(t, filled+".png"), alpha(t, hollow+".png")
+	var inkF, inkH int
+	for i := range f {
+		inkF += int(f[i])
+		inkH += int(h[i])
+	}
+	// Two identical I's: if only one were hollowed, more than half the ink would remain.
+	one := cells(t, "I", 2, 1.5)[0]
+	inkOne := 0
+	for _, a := range one {
+		inkOne += int(a)
+	}
+	if inkH != 2*inkOne {
+		t.Errorf("two hollow I's hold %d ink, want twice one hollow I, %d (filled: %d)", inkH, 2*inkOne, inkF)
+	}
+}
+
+// With no padding, neighbouring glyphs can touch. Each must still be measured on its
+// own, so the outline runs round each glyph, not round the pair as one shape.
+func TestTouchingGlyphsKeepTheirOwnOutline(t *testing.T) {
+	pair := cells(t, "__", 0, 1.5)
+	single := cells(t, "_", 0, 1.5)
+	for i, cell := range pair {
+		for j := range cell {
+			if cell[j] != single[0][j] {
+				t.Fatalf("underscore %d of 2, pixel %d: alpha %d, want %d as for an underscore on its own", i+1, j, cell[j], single[0][j])
+			}
+		}
+	}
+}

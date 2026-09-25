@@ -171,8 +171,8 @@ func validateInputs(f, s, c, o, t string, p int, h string, w float64) (Config, e
 		return Config{}, fmt.Errorf("invalid hinting: %s (use 'none', 'vertical', 'full')", h)
 	}
 
-	if w < 0 || math.IsNaN(w) || math.IsInf(w, 0) {
-		return Config{}, fmt.Errorf("invalid stroke: %v (must be 0 or a positive number of pixels)", w)
+	if w != 0 && !(w >= converter.MinStroke && !math.IsInf(w, 0)) {
+		return Config{}, fmt.Errorf("invalid stroke: %v (must be 0 for filled glyphs, or at least %v pixels)", w, converter.MinStroke)
 	}
 
 	var sizeInts []int
