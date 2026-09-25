@@ -24,7 +24,7 @@ func TestGenerate(t *testing.T) {
 	outPrefix := filepath.Join(tempDir, "test_output")
 
 	// 2. Execution
-	err := Generate(fontPath, 32, "ABC", outPrefix, "png", 2, "full")
+	err := Generate(fontPath, 32, "ABC", outPrefix, "png", 2, "full", 0)
 
 	// 3. Assertions
 	if err != nil {

@@ -14,7 +14,14 @@ import (
 
 // Generate creates the Font files (image + fnt).
 // Now accepts 'hinting' ("none", "vertical", "full")
-func Generate(fontPath string, size int, chars string, outPrefix string, format string, padding int, hinting string) (err error) {
+// and 'stroke': 0 draws filled glyphs; a positive width in pixels, which may be
+// fractional, keeps only the band that far inside each glyph's edge (hollow glyphs).
+// The stroke changes the image only; the fnt is the same as for filled glyphs.
+func Generate(fontPath string, size int, chars string, outPrefix string, format string, padding int, hinting string, stroke float64) (err error) {
+	if stroke != 0 && !(stroke >= MinStroke) {
+		return fmt.Errorf("stroke %v: must be 0 (filled) or at least %v px", stroke, MinStroke)
+	}
+
 	// 1. Read & Parse Font
 	fontBytes, err := os.ReadFile(fontPath)
 	if err != nil {
@@ -79,6 +86,7 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 
 	// 5. Draw Characters Individually
 	charPositions := make(map[rune]int)
+	var placed []placement // every glyph drawn, duplicates included, for hollow
 	currentX := 0
 
 	for _, char := range chars {
@@ -91,6 +99,7 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 
 		// Record position
 		charPositions[char] = currentX
+		placed = append(placed, placement{char, currentX})
 
 		// CRITICAL FIX: Explicitly set the Dot to the exact integer position.
 		// This prevents sub-pixel accumulation errors (drifting) and ensures
@@ -102,6 +111,13 @@ func Generate(fontPath string, size int, chars string, outPrefix string, format 
 
 		// Advance local integer tracker
 		currentX += width + padding
+	}
+
+	// 5b. Hollow the glyphs out, if asked
+	if stroke > 0 {
+		if err := hollow(img, f, size, h, placed, ascent, stroke); err != nil {
+			return fmt.Errorf("stroking glyphs: %w", err)
+		}
 	}
 
 	// 6. Save Image

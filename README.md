@@ -16,6 +16,7 @@ and automated regression testing.
 * **Multi-Size Support**: Generate multiple font sizes (e.g., 12, 24, 32px) in a single run.
 * **Smart Dashboard**: A rolling command-line UI providing real-time progress bars and log windows without cluttering
   the terminal.
+* **Hollow Glyphs**: Optionally keeps only an outline of each glyph, with a fractional, antialiased stroke width.
 * **Verification Suite**: Includes built-in tools for visual inspection and pixel-perfect regression testing against the
   original TTF.
 * **Cross-Platform**: Compiles for Linux, Windows, and macOS (Intel/Apple Silicon) with zero dependencies.
@@ -77,11 +78,33 @@ Instead, use the `--fonts` flag to provide a file path or a glob pattern to sele
 | `--sizes` | `-s`  | Comma-separated list of sizes   | Yes               | `"16, 24, 32"`   |
 | `--chars` | `-c`  | String of characters to include | Yes               | `"ABCabc123"`    |
 | `--out`   | `-o`  | Output directory                | No (Default: `.`) | `build/fonts`    |
+| `--stroke` | `-w` | Outline width in pixels, at least `0.125`; `0` draws filled glyphs | No (Default: `0`) | `1.25` |
 
 ### Example
 
 ```bash
 ./bin/ttf2bmp -f "assets/fonts/*.ttf" -s "12,24" -c "ABSabc" -o output/
+```
+
+### Hollow glyphs
+
+`--stroke W` keeps only the band of each glyph that lies within `W` pixels of its edge, and clears the
+interior, so the glyph is drawn as an outline:
+
+![Filled glyphs and three stroke widths](graphics/stroke.png)
+
+* **The band lies inside the glyph.** Nothing else changes: the atlas layout, the glyph bounds and every metric in the
+  `.fnt` are the same as for the filled font, so a hollow font can replace the filled one at the same size.
+* **`W` can be fractional.** The outer edge is the rasteriser's own antialiasing, and the inner edge is antialiased
+  too: the interior is measured on an 8x supersampled render and filtered back down. So a stroke can be scaled with
+  the font size or the screen resolution without rounding to whole pixels. The smallest width is `0.125`, one
+  supersample: anything narrower would round to no band and erase the glyph, so it is refused.
+* **Hollow fonts get their own file names**, with a suffix (a `.` in the width is written as `p`), so they can share
+  a directory with the filled fonts: `Face-68.fnt`, `Face-68-stroke1.fnt`, `Face-68-stroke1p25.fnt`.
+* **Without `--stroke`, output is unchanged**, byte for byte.
+
+```bash
+./bin/ttf2bmp -f "assets/fonts/Face.ttf" -s "54,68" -c "0123456789:" --stroke 1.25 -o output/
 ```
 
 ## Project structure
@@ -91,10 +114,13 @@ The project is organized into a modular structure separating the CLI, the core l
 ```text
 /ttf2bmp
   ├── main.go                # Main CLI entry point (Batch Processor & UI)
+  ├── main_test.go           # CLI option tests
   ├── converter/             # Core Library
   |   ├── bmp.go             # BMP image generation logic
   │   ├── lib.go             # Font rendering & FNT generation logic
-  │   └── lib_test.go        # Unit tests & Benchmarks
+  │   ├── lib_test.go        # Unit tests & Benchmarks
+  │   ├── stroke.go          # Hollow glyphs (--stroke)
+  │   └── stroke_test.go     # Stroke and distance transform tests
   ├── go.mod                 # Dependency Management
   ├── go.sum                 # Dependency Lockfile
   ├── tools/                 # Quality Assurance Tools
@@ -113,7 +139,7 @@ The project is organized into a modular structure separating the CLI, the core l
 | `make deps`  | Downloads dependencies and updates the lockfile.                
 | `make all`   | Runs dependencies, static checks, tests, and builds the binary. |
 | `make build` | Compiles the main CLI.                         |
-| `make test`  | Runs unit tests for the core converter library.                 |
+| `make test`  | Fetches the test font if missing, then runs all unit tests.     |
 | `make bench` | Runs performance benchmarks.                                    |
 | `make check` | Runs `go vet` and `golangci-lint` (atatic analysis).            |
 | `make fmt`   | Runs `go fmt` on all source files.                              |
