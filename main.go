@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,6 +25,7 @@ type Config struct {
 	Format      string
 	Padding     int
 	Hinting     string // New field
+	Stroke      float64
 }
 
 var logBuffer []string
@@ -31,6 +33,7 @@ var logBuffer []string
 func main() {
 	var fontsFlag, sizesFlag, charsFlag, outDir, typeFlag, hintingFlag string
 	var paddingFlag int
+	var strokeFlag float64
 	var showVersion bool
 
 	flag.Usage = func() {
@@ -55,6 +58,9 @@ func main() {
 	flag.StringVar(&hintingFlag, "hinting", "full", "Hinting: 'none' (smooth) or 'full' (crisp)")
 	flag.StringVar(&hintingFlag, "h", "full", "Short for --hinting")
 
+	flag.Float64Var(&strokeFlag, "stroke", 0, "Outline width in pixels, may be fractional; 0 draws filled glyphs")
+	flag.Float64Var(&strokeFlag, "w", 0, "Short for --stroke")
+
 	flag.BoolVar(&showVersion, "version", false, "Print version")
 
 	flag.Parse()
@@ -64,7 +70,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfg, err := validateInputs(fontsFlag, sizesFlag, charsFlag, outDir, typeFlag, paddingFlag, hintingFlag)
+	cfg, err := validateInputs(fontsFlag, sizesFlag, charsFlag, outDir, typeFlag, paddingFlag, hintingFlag, strokeFlag)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		flag.Usage()
@@ -115,13 +121,13 @@ func processBatch(files []string, cfg Config) {
 
 		for _, size := range cfg.Sizes {
 			currentJob++
-			outPrefix := filepath.Join(cfg.OutputDir, fmt.Sprintf("%s-%d", nameNoExt, size))
+			outPrefix := filepath.Join(cfg.OutputDir, fmt.Sprintf("%s-%d%s", nameNoExt, size, strokeSuffix(cfg.Stroke)))
 
-			msg := fmt.Sprintf("Processing %s @ %dpx (pad:%d, hint:%s)...", baseName, size, cfg.Padding, cfg.Hinting)
+			msg := fmt.Sprintf("Processing %s @ %dpx (pad:%d, hint:%s, stroke:%g)...", baseName, size, cfg.Padding, cfg.Hinting, cfg.Stroke)
 			updateUI(currentJob, totalJobs, msg)
 
 			// Pass Hinting
-			err := converter.Generate(fontPath, size, cfg.Chars, outPrefix, cfg.Format, cfg.Padding, cfg.Hinting)
+			err := converter.Generate(fontPath, size, cfg.Chars, outPrefix, cfg.Format, cfg.Padding, cfg.Hinting, cfg.Stroke)
 
 			if err != nil {
 				errMsg := fmt.Sprintf("FAIL %s @ %dpx: %v", baseName, size, err)
@@ -146,7 +152,7 @@ func processBatch(files []string, cfg Config) {
 	}
 }
 
-func validateInputs(f, s, c, o, t string, p int, h string) (Config, error) {
+func validateInputs(f, s, c, o, t string, p int, h string, w float64) (Config, error) {
 	if f == "" || s == "" || c == "" {
 		return Config{}, fmt.Errorf("missing arguments")
 	}
@@ -163,6 +169,10 @@ func validateInputs(f, s, c, o, t string, p int, h string) (Config, error) {
 	h = strings.ToLower(h)
 	if h != "none" && h != "vertical" && h != "full" {
 		return Config{}, fmt.Errorf("invalid hinting: %s (use 'none', 'vertical', 'full')", h)
+	}
+
+	if w < 0 || math.IsNaN(w) || math.IsInf(w, 0) {
+		return Config{}, fmt.Errorf("invalid stroke: %v (must be 0 or a positive number of pixels)", w)
 	}
 
 	var sizeInts []int
@@ -183,7 +193,19 @@ func validateInputs(f, s, c, o, t string, p int, h string) (Config, error) {
 		Format:      t,
 		Padding:     p,
 		Hinting:     h, // Set hinting
+		Stroke:      w,
 	}, nil
+}
+
+// strokeSuffix names the output of a hollow font apart from the filled one of the same
+// face and size, so the two can share a directory: "-stroke1", "-stroke0p77". The
+// decimal point is written as "p" so that the only dot in the file name is the one
+// before the extension.
+func strokeSuffix(w float64) string {
+	if w <= 0 {
+		return ""
+	}
+	return "-stroke" + strings.Replace(strconv.FormatFloat(w, 'f', -1, 64), ".", "p", 1)
 }
 
 func updateUI(current, total int, msg string) {
