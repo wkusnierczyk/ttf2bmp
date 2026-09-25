@@ -138,7 +138,7 @@ The project is organized into a modular structure separating the CLI, the core l
 | `make deps`  | Downloads dependencies and updates the lockfile.                
 | `make all`   | Runs dependencies, static checks, tests, and builds the binary. |
 | `make build` | Compiles the main CLI.                         |
-| `make test`  | Runs unit tests for the core converter library.                 |
+| `make test`  | Fetches the test font if missing, then runs all unit tests.     |
 | `make bench` | Runs performance benchmarks.                                    |
 | `make check` | Runs `go vet` and `golangci-lint` (atatic analysis).            |
 | `make fmt`   | Runs `go fmt` on all source files.                              |

@@ -105,9 +105,9 @@ fetch-test-data:
 # Testing & Code Quality
 # ==============================================================================
 
-test:
+test: fetch-test-data
 	@echo "  >  Running tests..."
-	$(GOTEST) -v ./converter/...
+	$(GOTEST) -v ./...
 
 check: vet lint
 
